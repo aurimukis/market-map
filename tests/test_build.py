@@ -103,4 +103,4 @@ def test_muka_index_equal_weight_and_membership():
 
 def test_muka_universe_is_equal_weight():
     u = F.muka_universe(F.load_muka())
-    assert u["equal"] and len(F.muka_symbols(F.load_muka())) == 30
+    assert u["equal"] and len(F.muka_symbols(F.load_muka())) == 35

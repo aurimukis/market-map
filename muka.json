@@ -2,7 +2,7 @@
   "name": "Muka",
   "inception": "2026-11-20",
   "base": 100,
-  "method": "Equal-weighted, 30 holdings, paper index only (no real money). Return is the average of the holdings' daily returns, so it behaves as if rebalanced daily. Prices adjusted for dividends.",
+  "method": "Equal-weighted, 35 holdings, paper index only (no real money). Return is the average of the holdings' daily returns, so it behaves as if rebalanced daily. Prices adjusted for dividends. European companies are held as US-listed shares (ADRs), so every return is in US dollars and no currency conversion is needed.",
   "rules": [
     "The board meets monthly, on the 2nd of the month (Melbourne time).",
     "At most 3 swaps per meeting, and no more than 8 holdings in any one theme.",
@@ -15,7 +15,6 @@
       "NVDA",
       "AVGO",
       "TSM",
-      "ASML",
       "MU"
     ],
     "Software & Platforms": [
@@ -54,6 +53,14 @@
       "RTX",
       "NEM",
       "XOM"
+    ],
+    "Europe": [
+      "ASML",
+      "SAP",
+      "NVO",
+      "AZN",
+      "NVS",
+      "SHEL"
     ]
   },
   "bench": [
@@ -66,7 +73,11 @@
     "SPGI",
     "LMT",
     "FCX",
-    "HD"
+    "HD",
+    "SNY",
+    "TTE",
+    "UL",
+    "SPOT"
   ],
   "added": {},
   "removed": {},
@@ -74,7 +85,7 @@
     {
       "date": "2026-11-20",
       "type": "launch",
-      "text": "Founding portfolio: 30 holdings across 7 themes. Growth engines (AI compute, platforms, power) balanced by defensives, healthcare, financials and hard assets so one bad theme cannot sink the index."
+      "text": "Founding portfolio: 35 holdings across 8 themes, amended before the first trading day to add a Europe theme (ASML moved from AI Compute). Growth engines (AI compute, platforms, power) are balanced by defensives, healthcare, financials, hard assets and European leaders so one bad theme cannot sink the index."
     }
   ]
 }
