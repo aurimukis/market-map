@@ -86,6 +86,16 @@ def _pick(tables, min_rows, want_sector=True):
                      str([[c for c in cols if "sym" in c.lower() or "tick" in c.lower()] for cols in seen][:30]))
 
 
+def _first_table(base, pages, min_rows, want_sector):
+    errs = []
+    for p in pages:
+        try:
+            return _pick(_get_tables(base + p), min_rows, want_sector)
+        except Exception as e:
+            errs.append(f"{p}: {e}")
+    raise ValueError("; ".join(errs))
+
+
 def _clean(x):
     return str(x).strip()
 
@@ -101,14 +111,15 @@ def universes_from_wikipedia():
     except Exception as e:
         print(f"S&P 500 list unavailable: {e}")
     try:
-        t, sym, sec = _pick(_get_tables(base + "Nasdaq-100"), 90, want_sector=False)
+        t, sym, sec = _first_table(base, ["Nasdaq-100", "List_of_Nasdaq-100_companies"], 90, False)
         # the page uses a different industry scheme, so reuse the S&P sector where the company is in both
         out["ndx"] = [(_clean(r[sym]), sector_of.get(_clean(r[sym]), _clean(r[sec]) if sec else "Other"))
                       for _, r in t.iterrows()]
     except Exception as e:
         print(f"Nasdaq 100 list unavailable: {e}")
     try:
-        t, sym, _ = _pick(_get_tables(base + "Dow_Jones_Industrial_Average"), 25, want_sector=False)
+        t, sym, _ = _first_table(base, ["Dow_Jones_Industrial_Average", "Historical_components_of_the_Dow_Jones_Industrial_Average"], 25, False)
+        t = t.head(30)
         out["dow"] = [(_clean(r[sym]), sector_of.get(_clean(r[sym]), "Other")) for _, r in t.iterrows()]
     except Exception as e:
         print(f"Dow 30 list unavailable: {e}")

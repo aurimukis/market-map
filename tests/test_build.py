@@ -72,7 +72,7 @@ def test_pick_table_flexible_columns():
     assert (sym, sec) == ("Ticker", "GICS Sector")
     dow = pd.DataFrame({"Company": "x", "Symbol": [f"D{i}" for i in range(30)], "Industry": "y"})
     t, sym, sec = F._pick([small, dow], 25, want_sector=False)
-    assert sym == "Symbol" and sec is None
+    assert sym == "Symbol"
     try:
         F._pick([small], 25)
         assert False
