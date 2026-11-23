@@ -32,9 +32,6 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Fetch data
-        env:
-          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
-          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
         run: python fetch.py
       - uses: actions/upload-pages-artifact@v3
         with:

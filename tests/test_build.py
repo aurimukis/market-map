@@ -33,3 +33,16 @@ def test_short_history_skipped():
     bars = {"MSFT": mk(n=10)}
     snaps = {"MSFT": {"price": 100, "volume": 1, "last_date": "2099-01-01", "prev_close": 99}}
     assert F.build(bars, snaps)["sectors"] == []
+
+
+def test_parse_download_shape():
+    import pandas as pd
+    idx = pd.date_range("2026-01-01", periods=30, freq="B")
+    cols = pd.MultiIndex.from_product([["BRK-B", "MSFT"], ["Open", "High", "Low", "Close", "Volume"]])
+    df = pd.DataFrame(1.0, index=idx, columns=cols)
+    df[("MSFT", "Volume")] = 1000
+    df.loc[idx[-1], ("MSFT", "Close")] = float("nan")   # a half-empty latest row is dropped
+    bars, snaps = F.parse_download(df, ["BRK.B", "MSFT", "AAPL"])
+    assert set(bars) == {"BRK.B", "MSFT"}                # AAPL missing is skipped, BRK.B maps to BRK-B
+    assert len(bars["MSFT"]) == 29 and snaps["MSFT"]["last_date"] == bars["MSFT"][-1]["d"]
+    assert snaps["BRK.B"]["prev_close"] == 1.0

@@ -1,6 +1,6 @@
 """
-Builds site/data.json for the market map. Read-only market data from Alpaca (IEX feed). No trading.
-Needs ALPACA_KEY and ALPACA_SECRET in the environment (paper keys are fine).
+Builds site/data.json for the market map. Free Yahoo Finance data through yfinance, no account or keys. No trading.
+Yahoo prices can be delayed by up to about 15 minutes.
 """
 
 import json
@@ -72,31 +72,35 @@ def build(bars, snaps):
     }
 
 
-def fetch():
-    from alpaca.data.enums import Adjustment, DataFeed
-    from alpaca.data.historical import StockHistoricalDataClient
-    from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
-    from alpaca.data.timeframe import TimeFrame
-
-    client = StockHistoricalDataClient(os.environ["ALPACA_KEY"], os.environ["ALPACA_SECRET"])
-    symbols = sorted({s for syms in SECTORS.values() for s in syms} | set(INDICES))
-    req = StockBarsRequest(symbol_or_symbols=symbols, timeframe=TimeFrame.Day,
-                           start=datetime.now(timezone.utc) - timedelta(days=130),
-                           adjustment=Adjustment.SPLIT, feed=DataFeed.IEX)
-    bars = {}
-    for sym, rows in client.get_stock_bars(req).data.items():
-        bars[sym] = [{"d": r.timestamp.strftime("%Y-%m-%d"), "o": r.open, "h": r.high, "l": r.low,
-                      "c": r.close, "v": int(r.volume)} for r in rows]
-    raw = client.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=symbols, feed=DataFeed.IEX))
-    snaps = {}
-    for sym, s in raw.items():
-        if not s.daily_bar:
+def parse_download(df, symbols):
+    """
+    df: yfinance download frame (columns grouped by ticker). Returns (bars, snaps) in the shape build() expects.
+    Yahoo's last daily row is the live (or latest finished) session, so it supplies price, volume and date.
+    """
+    bars, snaps = {}, {}
+    for sym in symbols:
+        ysym = sym.replace(".", "-")
+        try:
+            sub = df[ysym].dropna(subset=["Close"])
+        except KeyError:
             continue
-        price = float(s.latest_trade.price) if s.latest_trade else float(s.daily_bar.close)
-        snaps[sym] = {"price": price, "volume": int(s.daily_bar.volume),
-                      "last_date": s.daily_bar.timestamp.strftime("%Y-%m-%d"),
-                      "prev_close": float(s.previous_daily_bar.close) if s.previous_daily_bar else None}
+        rows = [{"d": idx.strftime("%Y-%m-%d"), "o": float(r["Open"]), "h": float(r["High"]), "l": float(r["Low"]),
+                 "c": float(r["Close"]), "v": int(r["Volume"] or 0)} for idx, r in sub.iterrows()]
+        if len(rows) < 2:
+            continue
+        bars[sym] = rows
+        snaps[sym] = {"price": rows[-1]["c"], "volume": rows[-1]["v"], "last_date": rows[-1]["d"],
+                      "prev_close": rows[-2]["c"]}
     return bars, snaps
+
+
+def fetch():
+    import yfinance as yf
+
+    symbols = sorted({s for syms in SECTORS.values() for s in syms} | set(INDICES))
+    df = yf.download([s.replace(".", "-") for s in symbols], period="8mo", interval="1d", group_by="ticker",
+                     auto_adjust=True, threads=True, progress=False)
+    return parse_download(df, symbols)
 
 
 def main():
