@@ -2,3 +2,4 @@ __pycache__/
 .pytest_cache/
 site/data.json
 anchors.json
+site/spark.json

@@ -42,6 +42,21 @@ FALLBACK = {
 DOW_FALLBACK = ["AAPL", "AMGN", "AMZN", "AXP", "BA", "CAT", "CRM", "CSCO", "CVX", "DIS", "GS", "HD", "HON", "IBM",
                 "JNJ", "JPM", "KO", "MCD", "MMM", "MRK", "MSFT", "NKE", "NVDA", "PG", "SHW", "TRV", "UNH", "V",
                 "VZ", "WMT"]
+ETF_NAMES = {
+    "SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ (Nasdaq 100)", "DIA": "SPDR Dow Jones Industrial Average ETF",
+    "IWM": "iShares Russell 2000 ETF", "MDY": "SPDR S&P MidCap 400 ETF", "XLK": "Technology Select Sector SPDR",
+    "XLF": "Financial Select Sector SPDR", "XLV": "Health Care Select Sector SPDR", "XLE": "Energy Select Sector SPDR",
+    "XLY": "Consumer Discretionary Select Sector SPDR", "XLP": "Consumer Staples Select Sector SPDR",
+    "XLI": "Industrial Select Sector SPDR", "XLU": "Utilities Select Sector SPDR", "XLB": "Materials Select Sector SPDR",
+    "XLRE": "Real Estate Select Sector SPDR", "XLC": "Communication Services Select Sector SPDR",
+    "SMH": "VanEck Semiconductor ETF", "EFA": "iShares MSCI EAFE (developed ex-US)", "EEM": "iShares MSCI Emerging Markets",
+    "VGK": "Vanguard FTSE Europe", "EWJ": "iShares MSCI Japan", "FXI": "iShares China Large-Cap", "EWA": "iShares MSCI Australia",
+    "INDA": "iShares MSCI India", "TLT": "iShares 20+ Year Treasury Bond", "IEF": "iShares 7-10 Year Treasury Bond",
+    "HYG": "iShares High Yield Corporate Bond", "LQD": "iShares Investment Grade Corporate Bond", "GLD": "SPDR Gold Shares",
+    "SLV": "iShares Silver Trust", "USO": "United States Oil Fund", "UNG": "United States Natural Gas Fund",
+    "DBC": "Invesco DB Commodity Index", "CPER": "United States Copper Index Fund", "IBIT": "iShares Bitcoin Trust",
+    "ETHA": "iShares Ethereum Trust",
+}
 ETFS = {
     "US indices": ["SPY", "QQQ", "DIA", "IWM", "MDY"],
     "US sectors": ["XLK", "XLF", "XLV", "XLE", "XLY", "XLP", "XLI", "XLU", "XLB", "XLRE", "XLC", "SMH"],
@@ -108,6 +123,9 @@ def universes_from_wikipedia():
         t, sym, sec = _pick(_get_tables(base + "List_of_S%26P_500_companies"), 400)
         sector_of = {_clean(r[sym]): _clean(r[sec]) for _, r in t.iterrows()}
         out["sp500"] = list(sector_of.items())
+        name_col = next((c for c in t.columns if _name(c) in ("security", "company")), None)
+        if name_col:
+            out["_names"] = {_clean(r[sym]): _clean(r[name_col]) for _, r in t.iterrows()}
     except Exception as e:
         print(f"S&P 500 list unavailable: {e}")
     try:
@@ -141,8 +159,9 @@ def get_universes():
     fb = universes_fallback()
     for k, v in fb.items():       # anything that could not be read falls back to the built-in list
         u.setdefault(k, v)
-    print("Constituent lists:", {k: len(v) for k, v in u.items()})
-    return u
+    names = u.pop("_names", {})
+    print("Constituent lists:", {k: len(v) for k, v in u.items()}, "names:", len(names))
+    return u, names
 
 
 def group(pairs):
@@ -223,7 +242,8 @@ def signal(ind, regime_ok):
     return AVOID if S._trend_failed(ind) else WATCH
 
 
-def build(rows_by_sym, anchors_by_sym, universes):
+def build(rows_by_sym, anchors_by_sym, universes, names=None):
+    names = {**ETF_NAMES, **(names or {})}
     recs, inds = {}, {}
     for sym, rows in rows_by_sym.items():
         out = record(rows, anchors_by_sym.get(sym))
@@ -233,6 +253,8 @@ def build(rows_by_sym, anchors_by_sym, universes):
     ok = bool(reg.get("ok"))
     for sym in recs:
         recs[sym]["signal"] = signal(inds[sym], ok)
+        if names.get(sym):
+            recs[sym]["n"] = names[sym]
     unis = []
     for u in universes:
         secs = []
@@ -304,7 +326,8 @@ def load_anchors(symbols, path="anchors.json"):
 
 
 def main():
-    unis = layout_of(get_universes())
+    lists, names = get_universes()
+    unis = layout_of(lists)
     symbols = sorted({s for u in unis for sec in u["sectors"] for s in sec["symbols"]} | set(INDICES))
     print(f"{len(symbols)} symbols")
     rows = download(symbols, period="13mo", interval="1d")
@@ -313,13 +336,17 @@ def main():
     except Exception as e:
         print(f"Long-range history unavailable ({e}). Showing periods up to 1 year only.")
         anchors = {}
-    data = build(rows, anchors, unis)
+    data = build(rows, anchors, unis, names)
     n = len(data["symbols"])
     if n < 30:
         sys.exit(f"Only {n} symbols had enough data, not publishing.")
     os.makedirs("site", exist_ok=True)
     with open("site/data.json", "w") as f:
         json.dump(data, f, separators=(",", ":"))
+    # one year of closes per symbol for the hover chart, loaded by the page only when needed
+    spark = {sym: [round(r["c"], 2) for r in rows[sym][-252:]] for sym in data["symbols"]}
+    with open("site/spark.json", "w") as f:
+        json.dump(spark, f, separators=(",", ":"))
     print(f"Wrote site/data.json with {n} symbols. {data['regime']['why']}")
 
 

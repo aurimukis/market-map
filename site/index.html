@@ -34,6 +34,13 @@
   .flash-up { animation:fu 1.4s; } .flash-down { animation:fd 1.4s; }
   @keyframes fu { 0%,40% { box-shadow: inset 0 0 0 3px #4ee37b; } 100% { box-shadow: inset 0 0 0 0 transparent; } }
   @keyframes fd { 0%,40% { box-shadow: inset 0 0 0 3px #ff6b6e; } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+  .tile .tiny { font-weight:700; white-space:nowrap; letter-spacing:-.02em; }
+  #hover { position:fixed; z-index:20; width:290px; background:#232632f2; border:1px solid #3a3e50; border-radius:10px;
+    padding:10px 12px; font-size:12px; display:none; pointer-events:none; box-shadow:0 6px 22px #000a; }
+  #hover .t { font-size:15px; font-weight:700; } #hover .n { color:var(--mut); margin-bottom:4px; line-height:1.25; }
+  #hover table { width:100%; border-collapse:collapse; margin-top:6px; }
+  #hover td { padding:1px 0; } #hover td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+  #hover svg { display:block; margin-top:6px; }
   footer { padding:6px 10px 8px; font-size:10.5px; color:var(--mut); }
   #tip { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); background:#2a2d38;
     border-radius:10px; padding:10px 12px; font-size:13px; display:none; z-index:10; box-shadow:0 4px 18px #0008; }
@@ -58,6 +65,7 @@
   <div>Tile size is dollar volume (not exact market cap). Colour scale widens for longer periods. Long periods include dividend adjustment. Prices from Yahoo, up to about 15 minutes delayed. Signals are one simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
 </footer>
 <div id="tip"></div>
+<div id="hover"></div>
 <script src="layout.js"></script>
 <script>
 const SCALE = [[-10,[246,53,56]],[-6.7,[191,64,69]],[-3.3,[139,68,78]],[0,[65,69,84]],[3.3,[53,118,78]],[6.7,[47,158,79]],[10,[48,204,90]]];
@@ -151,6 +159,10 @@ function draw(flash) {
         if (h > 34 && w > 38) html += `<div class="c" style="font-size:${Math.max(8, fs * .62)}px">${fmt(v)}</div>`;
         if (h > 58 && w > 76) html += `<div class="g" style="font-size:${Math.max(7, fs * .42)}px;color:${SIGCOL[it.signal]}">${it.signal}</div>`;
         t.innerHTML = html;
+      } else {
+        // very small tile: just the ticker in a font sized to fit, if that is still legible
+        const fit = Math.min((h - 1) * 0.8, (w - 2) / (0.6 * it.s.length));
+        if (fit >= 3.6 && w >= 7 && h >= 5) t.innerHTML = `<div class="tiny" style="font-size:${fit.toFixed(1)}px">${it.s}</div>`;
       }
       fresh[it.s] = it.d1;
       if (flash && prev[it.s] != null && it.d1 != null && Math.abs(it.d1 - prev[it.s]) >= 0.05) t.classList.add(it.d1 > prev[it.s] ? "flash-up" : "flash-down");
@@ -160,11 +172,53 @@ function draw(flash) {
           `<br><span style="color:${SIGCOL[it.signal]}">${it.signal}</span>`;
         tip.style.display = "block"; clearTimeout(window._t); window._t = setTimeout(() => tip.style.display = "none", 6000);
       };
+      t.onmouseenter = e => showHover(e, it);
+      t.onmousemove = e => moveHover(e);
+      t.onmouseleave = hideHover;
       box.appendChild(t);
     });
   });
   if (flash || !Object.keys(prev).length) prev = fresh;
 }
+let spark = null, sparkTried = false;
+async function loadSpark() {
+  if (sparkTried) return; sparkTried = true;
+  try { spark = await (await fetch("spark.json?d=" + new Date().toISOString().slice(0, 10))).json(); } catch (e) { spark = null; }
+}
+function chart(sym) {
+  const c = spark && spark[sym]; if (!c || c.length < 5) return "";
+  const W = 266, H = 64, lo = Math.min(...c), hi = Math.max(...c), r = hi - lo || 1;
+  const pts = c.map((v, i) => [(i / (c.length - 1)) * W, H - 3 - ((v - lo) / r) * (H - 8)]);
+  const line = pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  const up = c[c.length - 1] >= c[0], col = up ? "#4ee37b" : "#ff6b6e";
+  return `<svg width="${W}" height="${H + 14}" viewBox="0 0 ${W} ${H + 14}">` +
+    `<polygon points="0,${H} ${line} ${W},${H}" fill="${col}" opacity=".15"/>` +
+    `<polyline points="${line}" fill="none" stroke="${col}" stroke-width="1.6"/>` +
+    `<circle cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1]}" r="2.6" fill="${col}"/>` +
+    `<text x="0" y="${H + 11}" fill="#9aa0ae" font-size="9">1 year: low ${lo.toFixed(2)}</text>` +
+    `<text x="${W}" y="${H + 11}" fill="#9aa0ae" font-size="9" text-anchor="end">high ${hi.toFixed(2)}</text></svg>`;
+}
+function showHover(e, it) {
+  if (!matchMedia("(hover: hover)").matches) return;   // touch screens use tap instead
+  loadSpark();
+  const el = document.getElementById("hover");
+  el.innerHTML = `<div class="t">${it.s} <span style="font-weight:400">$${it.price}</span></div>` +
+    (it.n ? `<div class="n">${it.n}</div>` : "") +
+    `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
+    `<table>` + PERIODS.map(([k, n]) => `<tr${k === key ? ' style="font-weight:700"' : ""}><td>${n}</td>` +
+      `<td class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</td></tr>`).join("") + `</table>` + chart(it.s);
+  el.style.display = "block"; moveHover(e);
+  if (!spark) setTimeout(() => { if (el.style.display === "block" && spark) el.querySelector("table").insertAdjacentHTML("afterend", chart(it.s)); }, 700);
+}
+function moveHover(e) {
+  const el = document.getElementById("hover");
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let x = e.clientX + 16, y = e.clientY + 16;
+  if (x + w > innerWidth - 6) x = e.clientX - w - 16;
+  if (y + h > innerHeight - 6) y = Math.max(6, innerHeight - h - 6);
+  el.style.left = x + "px"; el.style.top = y + "px";
+}
+function hideHover() { document.getElementById("hover").style.display = "none"; }
 window.addEventListener("resize", () => draw(false));
 load(); setInterval(load, 60000);
 </script>
