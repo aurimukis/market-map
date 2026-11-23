@@ -22,6 +22,10 @@
     white-space:nowrap; flex:none; }
   .tabs button.on { background:#4a5170; font-weight:600; }
   select { padding:6px 8px; font-weight:600; }
+  .seg { display:flex; flex:none; background:#2a2d38; border-radius:6px; padding:2px; gap:2px; }
+  .seg button { background:transparent; color:var(--fg); border:0; border-radius:5px; padding:4px 9px; font-size:12px; }
+  .seg button.on { background:#4a5170; font-weight:600; }
+  .legend .sw { padding:2px 8px; font-size:10px; color:#fff; font-weight:600; }
   #regime { font-size:12px; padding:0 10px 4px; color:var(--mut); }
   #map { position:relative; flex:1; min-height:300px; margin:0 4px; }
   .sec { position:absolute; border:1px solid var(--bg); }
@@ -59,6 +63,7 @@
 </header>
 <div class="bar">
   <select id="uni" aria-label="Index"></select>
+  <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button></div>
   <div class="tabs" id="tabs"></div>
 </div>
 <div id="regime"></div>
@@ -66,7 +71,7 @@
 <footer>
   <div id="updated"></div>
   <div class="legend" id="legend"></div>
-  <div>Tile size is dollar volume (not exact market cap). Colour scale widens for longer periods. Long periods include dividend adjustment. Prices from Yahoo, up to about 15 minutes delayed. Signals are one simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
+  <div>Tile size is dollar volume (not exact market cap). Colour scale widens for longer periods. Long periods include dividend adjustment. Prices from Yahoo, up to about 15 minutes delayed. Signal colours: green = buy setup (uptrend, entry setup, market OK), yellow = setup but market weak, orange = hold / watch (uptrend, no entry yet), red = avoid (no uptrend). One simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
 </footer>
 <div id="tip"></div>
 <div id="hover"></div>
@@ -85,20 +90,37 @@ function colour(p) {
 // Longer periods move much more, so the colour scale widens (full colour at +/-10% today, up to +/-100% at max).
 const FULL = {d1:10, d5:10, d1m:20, ytd:40, y1:50, y2:80, y3:100, y5:150, max:300};
 const fmt = p => p == null ? "n/a" : (p > 0 ? "+" : "") + p.toFixed(1) + "%";
+const SIGBG = {"BUY SETUP":"rgb(38,176,80)","SETUP (weak mkt)":"rgb(196,170,40)","HOLD / WATCH":"rgb(214,126,46)","AVOID":"rgb(205,64,72)"};
+const SIGNAMES = [["BUY SETUP","Buy"],["SETUP (weak mkt)","Setup, weak market"],["HOLD / WATCH","Hold / watch"],["AVOID","Avoid"]];
 const SIGCOL = {"BUY SETUP":"#ffe66d","SETUP (weak mkt)":"#ffd9a0","HOLD / WATCH":"#e6e8ef","AVOID":"#ffb3b3"};
 const PERIODS = [["d1","Today"],["d5","5 days"],["d1m","1 month"],["ytd","YTD"],["y1","1 year"],["y2","2 years"],["y3","3 years"],["y5","5 years"],["max","Max"]];
-let data = null, key = "d1", uni = "sp500", prev = {};
-try { key = localStorage.getItem("mm_key") || key; uni = localStorage.getItem("mm_uni") || uni; } catch (e) {}
+let data = null, key = "d1", uni = "sp500", mode = "perf", prev = {};
+try { key = localStorage.getItem("mm_key") || key; uni = localStorage.getItem("mm_uni") || uni; mode = localStorage.getItem("mm_mode") || mode; } catch (e) {}
+if (mode !== "signal") mode = "perf";
 if (!PERIODS.some(p => p[0] === key)) key = "d1";
-const save = () => { try { localStorage.setItem("mm_key", key); localStorage.setItem("mm_uni", uni); } catch (e) {} };
+const save = () => { try { localStorage.setItem("mm_key", key); localStorage.setItem("mm_uni", uni); localStorage.setItem("mm_mode", mode); } catch (e) {} };
 
 function legend() {
-  document.getElementById("legend").innerHTML = [-10,-6.7,-3.3,0,3.3,6.7,10]
-    .map(v => { const n = Math.round(v / 10 * FULL[key] * 10) / 10; return `<span style="background:${colour(v)}">${n > 0 ? "+" : ""}${n}%</span>`; }).join("");
+  const el = document.getElementById("legend");
+  if (mode === "signal") {
+    const U = data && (data.universes.find(u => u.id === uni) || data.universes[0]);
+    const count = {};
+    if (U) U.sectors.forEach(s => s.symbols.forEach(sym => { const g = data.symbols[sym].signal; count[g] = (count[g] || 0) + 1; }));
+    el.innerHTML = SIGNAMES.map(([k, n]) => `<span class="sw" style="background:${SIGBG[k]}">${n}${U ? " " + (count[k] || 0) : ""}</span>`).join("");
+  } else {
+    el.innerHTML = [-10,-6.7,-3.3,0,3.3,6.7,10]
+      .map(v => { const n = Math.round(v / 10 * FULL[key] * 10) / 10; return `<span style="background:${colour(v)}">${n > 0 ? "+" : ""}${n}%</span>`; }).join("");
+  }
 }
 const tabs = document.getElementById("tabs");
 tabs.innerHTML = PERIODS.map(([k, n]) => `<button data-k="${k}">${n}</button>`).join("");
-function marks() { tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === key)); legend(); }
+function marks() {
+  tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === key));
+  document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x.dataset.m === mode));
+  tabs.style.opacity = mode === "signal" ? ".55" : "1";
+  legend();
+}
+document.querySelectorAll("#mode button").forEach(b => b.onclick = () => { mode = b.dataset.m; save(); marks(); draw(false); });
 tabs.querySelectorAll("button").forEach(b => b.onclick = () => { key = b.dataset.k; save(); marks(); draw(false); });
 document.getElementById("uni").onchange = e => { uni = e.target.value; save(); draw(false); };
 marks();
@@ -135,7 +157,7 @@ const norm = v => v == null ? null : v / FULL[key] * 10;
 
 function draw(flash) {
   if (!data) return;
-  header();
+  header(); legend();
   const U = data.universes.find(u => u.id === uni) || data.universes[0];
   const map = document.getElementById("map");
   const W = map.clientWidth, H = map.clientHeight;
@@ -168,7 +190,7 @@ function draw(flash) {
         hh = 12;
         const hd = document.createElement("div");
         hd.className = "hd"; hd.textContent = ind.name;
-        hd.style.background = colour(norm(avgOf(ind.items)));
+        hd.style.background = mode === "signal" ? "#3a3e50" : colour(norm(avgOf(ind.items)));
         ib.appendChild(hd);
       }
       box.appendChild(ib);
@@ -176,7 +198,7 @@ function draw(flash) {
         const it = ind.items[k], v = it[key];
         const t = document.createElement("div");
         t.className = "tile";
-        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${colour(norm(v))}`;
+        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${mode === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
         const len = it.s.length;
         // font sized to the tile, and never wider than the tile (about 0.66em per capital letter)
         let fs = Math.min(26, Math.min(w, h) / 3.2, (w - 4) / (0.66 * len));
@@ -184,7 +206,6 @@ function draw(flash) {
           let html = `<div class="s" style="font-size:${fs.toFixed(1)}px">${it.s}</div>`;
           const cs = Math.min(fs * .62, (w - 4) / 4.6);
           if (h > fs * 2.1 + 4 && cs >= 6.5) html += `<div class="c" style="font-size:${cs.toFixed(1)}px">${fmt(v)}</div>`;
-          if (h > fs * 3.1 + 8 && w > 76) html += `<div class="g" style="font-size:${Math.max(7, fs * .42).toFixed(1)}px;color:${SIGCOL[it.signal]}">${it.signal}</div>`;
           t.innerHTML = html;
         } else {
           // small tile: two initials in a small font that fits, or nothing if even that would be unreadable
