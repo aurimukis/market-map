@@ -337,7 +337,7 @@ function radar(sym) {
   return (f.d ? `<div style="margin:6px 0 2px;line-height:1.35;color:#d6d9e2">${f.d}</div>` : "") +
     `<svg width="100%" viewBox="-12 4 180 140" style="max-width:260px;display:block;margin:0 auto">` +
     `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#20232d"/>` +
-    [6, 4, 2].map((v, k) => `<circle cx="${cx}" cy="${cy}" r="${R * v / 6}" fill="${k % 2 ? "#20232d" : "#262a36"}" stroke="#343848" stroke-width=".8"/>`).join("") +
+    [6, 5, 4, 3, 2, 1].map((v, k) => `<circle cx="${cx}" cy="${cy}" r="${R * v / 6}" fill="${k % 2 ? "#20232d" : "#2a2e3b"}" stroke="#343848" stroke-width=".8"/>`).join("") +
     spokes + `<path d="${d} Z" fill="#4ee37b" fill-opacity=".38" stroke="#6fe08f" stroke-width="1.8" stroke-linejoin="round"/>${labels}</svg>` +
     `<div style="color:#6f7586;font-size:10px;text-align:center">Fundamentals radar, each axis 0 to 6. Our own simple scoring from Yahoo data.</div>`;
 }
