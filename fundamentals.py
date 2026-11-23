@@ -67,7 +67,7 @@ def entry(info):
     return {"d": desc, "s": scores(info), "t": int(time.time())}
 
 
-def refresh(symbols, cache, budget=150, max_age_days=7, ticker=None, pause=0.25):
+def refresh(symbols, cache, budget=240, max_age_days=7, ticker=None, pause=0.25):
     """Fill or renew cache entries for symbols (priority order) within a time budget. Stops early if Yahoo blocks us."""
     if ticker is None:
         import yfinance as yf

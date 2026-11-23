@@ -318,15 +318,25 @@ async function loadFund() {
 }
 const AXES = ["Value", "Future", "Past", "Health", "Dividend"];
 function radar(sym) {
-  const f = fund && fund[sym]; if (!f) return "";
-  const R = 44, cx = 78, cy = 72, pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + Math.cos(a) * R * v / 6, cy + Math.sin(a) * R * v / 6]; };
-  const ring = v => AXES.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(",")).join(" ");
-  const shape = f.s.map((v, i) => pt(i, Math.max(v, .25)).map(x => x.toFixed(1)).join(",")).join(" ");
+  const f = fund && fund[sym];
+  if (!f) return fundTried && fund ? `<div style="color:#6f7586;font-size:11px;margin-top:6px">Company details not loaded yet for this stock. They fill in over the next few updates.</div>` : "";
+  const R = 44, cx = 78, cy = 72, ang = i => -Math.PI / 2 + i * 2 * Math.PI / 5;
+  const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / 6, cy + Math.sin(ang(i)) * R * v / 6];
+  const P = f.s.map((v, i) => pt(i, Math.max(v, .6)));
+  // smooth closed curve through the five points (Catmull-Rom converted to cubic Beziers)
+  let d = `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < 5; i++) {
+    const p0 = P[(i + 4) % 5], p1 = P[i], p2 = P[(i + 1) % 5], p3 = P[(i + 2) % 5], k = 1 / 6 * 1.15;
+    d += ` C${(p1[0] + (p2[0] - p0[0]) * k).toFixed(1)},${(p1[1] + (p2[1] - p0[1]) * k).toFixed(1)} ` +
+         `${(p2[0] - (p3[0] - p1[0]) * k).toFixed(1)},${(p2[1] - (p3[1] - p1[1]) * k).toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const spokes = AXES.map((_, i) => { const [x, y] = pt(i, 6); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#2f3342" stroke-width="1"/>`; }).join("");
   const labels = AXES.map((n, i) => { const [x, y] = pt(i, 7.4); return `<text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="#9aa0ae" font-size="9" text-anchor="middle">${n} ${f.s[i]}</text>`; }).join("");
   return (f.d ? `<div style="margin:6px 0 2px;line-height:1.35;color:#d6d9e2">${f.d}</div>` : "") +
     `<svg width="100%" viewBox="-12 4 180 140" style="max-width:260px;display:block;margin:0 auto">` +
-    [2, 4, 6].map(v => `<polygon points="${ring(v)}" fill="none" stroke="#3a3e50" stroke-width="1"/>`).join("") +
-    `<polygon points="${shape}" fill="#4ee37b" fill-opacity=".35" stroke="#4ee37b" stroke-width="1.6"/>${labels}</svg>` +
+    `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#20232d"/>` +
+    [6, 4, 2].map((v, k) => `<circle cx="${cx}" cy="${cy}" r="${R * v / 6}" fill="${k % 2 ? "#20232d" : "#262a36"}" stroke="#343848" stroke-width=".8"/>`).join("") +
+    spokes + `<path d="${d} Z" fill="#4ee37b" fill-opacity=".38" stroke="#6fe08f" stroke-width="1.8" stroke-linejoin="round"/>${labels}</svg>` +
     `<div style="color:#6f7586;font-size:10px;text-align:center">Fundamentals radar, each axis 0 to 6. Our own simple scoring from Yahoo data.</div>`;
 }
 let spark = null, sparkTried = false;
