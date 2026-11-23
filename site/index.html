@@ -160,9 +160,10 @@ function draw(flash) {
         if (h > 58 && w > 76) html += `<div class="g" style="font-size:${Math.max(7, fs * .42)}px;color:${SIGCOL[it.signal]}">${it.signal}</div>`;
         t.innerHTML = html;
       } else {
-        // very small tile: just the ticker in a font sized to fit, if that is still legible
-        const fit = Math.min((h - 1) * 0.8, (w - 2) / (0.6 * it.s.length));
-        if (fit >= 3.6 && w >= 7 && h >= 5) t.innerHTML = `<div class="tiny" style="font-size:${fit.toFixed(1)}px">${it.s}</div>`;
+        // very small tile: only the first two letters, in a font sized to fit, if that is still legible
+        const ini = it.s.slice(0, 2);
+        const fit = Math.min((h - 1) * 0.8, (w - 2) / (0.62 * ini.length));
+        if (fit >= 3.6 && w >= 7 && h >= 5) t.innerHTML = `<div class="tiny" style="font-size:${fit.toFixed(1)}px">${ini}</div>`;
       }
       fresh[it.s] = it.d1;
       if (flash && prev[it.s] != null && it.d1 != null && Math.abs(it.d1 - prev[it.s]) >= 0.05) t.classList.add(it.d1 > prev[it.s] ? "flash-up" : "flash-down");
