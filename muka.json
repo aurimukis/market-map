@@ -1,0 +1,28 @@
+{
+  "name": "Muka",
+  "inception": "2026-11-20",
+  "base": 100,
+  "method": "Equal-weighted, 30 holdings, paper index only (no real money). Return is the average of the holdings' daily returns, so it behaves as if rebalanced daily. Prices adjusted for dividends.",
+  "rules": [
+    "The board meets on the first Monday of each month.",
+    "At most 3 swaps per meeting, and no more than 8 holdings in any one theme.",
+    "A holding can be dropped when its trend has failed (below its 50-day and 200-day averages) at two month-end checks in a row, or when its theme story breaks.",
+    "A replacement comes from the bench and must be in an uptrend at the meeting. Each swap is written to the log with a reason.",
+    "Every change takes effect at the close of the meeting day and is never back-dated."
+  ],
+  "themes": {
+    "AI Compute": ["NVDA", "AVGO", "TSM", "ASML", "MU"],
+    "Software & Platforms": ["MSFT", "GOOGL", "AMZN", "META", "ORCL"],
+    "Power & Industrials": ["GEV", "ETN", "VRT", "CAT", "CEG"],
+    "Defensive Quality": ["WMT", "COST", "PG", "KO"],
+    "Healthcare": ["LLY", "ISRG", "JNJ", "ABT"],
+    "Financials": ["JPM", "V", "MA", "BRK.B"],
+    "Defence & Hard Assets": ["RTX", "NEM", "XOM"]
+  },
+  "bench": ["AMD", "NOW", "PLTR", "TT", "PWR", "MRK", "SPGI", "LMT", "FCX", "HD"],
+  "added": {},
+  "removed": {},
+  "board": [
+    {"date": "2026-11-20", "type": "launch", "text": "Founding portfolio: 30 holdings across 7 themes. Growth engines (AI compute, platforms, power) balanced by defensives, healthcare, financials and hard assets so one bad theme cannot sink the index."}
+  ]
+}

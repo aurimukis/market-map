@@ -183,6 +183,55 @@ def group(pairs, industry=None):
     return result
 
 
+def load_muka(path="muka.json"):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Muka config unavailable ({e}).")
+        return None
+
+
+def muka_symbols(cfg):
+    return [s for syms in cfg["themes"].values() for s in syms]
+
+
+def muka_universe(cfg):
+    sectors = [{"name": t, "symbols": list(s), "industries": [{"name": "", "symbols": list(s)}]}
+               for t, s in cfg["themes"].items()]
+    return {"id": "muka", "name": cfg.get("name", "Muka"), "sqrt": False, "equal": True, "sectors": sectors}
+
+
+def muka_index(rows_by_sym, cfg, bench=BENCH):
+    """Equal-weight index level since inception. Membership on a day is whatever the board held at the previous close."""
+    inc = cfg["inception"]
+    added, removed = cfg.get("added", {}), cfg.get("removed", {})
+    closes = {s: {r["d"]: r["c"] for r in rows} for s, rows in rows_by_sym.items()}
+    dates = [r["d"] for r in rows_by_sym.get(bench, []) if r["d"] >= inc]
+    if not dates:
+        return None
+    syms = set(muka_symbols(cfg)) | set(added)
+
+    def held(s, d):
+        return added.get(s, inc) <= d and (s not in removed or removed[s] > d)
+
+    level, spy = [cfg.get("base", 100.0)], [cfg.get("base", 100.0)]
+    for prev, d in zip(dates, dates[1:]):
+        rets = [closes[s][d] / closes[s][prev] - 1 for s in syms
+                if held(s, prev) and s in closes and prev in closes[s] and d in closes[s]]
+        r = sum(rets) / len(rets) if rets else 0.0
+        level.append(level[-1] * (1 + r))
+        b = closes[bench]
+        spy.append(spy[-1] * b[d] / b[prev])
+    base = cfg.get("base", 100.0)
+    return {
+        "name": cfg.get("name", "Muka"), "inception": inc, "method": cfg.get("method", ""),
+        "rules": cfg.get("rules", []), "board": cfg.get("board", []), "bench": cfg.get("bench", []),
+        "dates": dates, "level": [round(v, 3) for v in level], "spy": [round(v, 3) for v in spy],
+        "pct": round((level[-1] / base - 1) * 100, 2), "spy_pct": round((spy[-1] / base - 1) * 100, 2),
+    }
+
+
 def layout_of(unis, industry=None):
     out = []
     names = {"sp500": "S&P 500", "ndx": "Nasdaq 100", "dow": "Dow 30"}
@@ -281,7 +330,7 @@ def build(rows_by_sym, anchors_by_sym, universes, names=None):
                         inds.append({"name": ind["name"], "symbols": keep})
                 secs.append({"name": sec["name"], "symbols": have, "industries": inds})
         if secs:
-            unis.append({"id": u["id"], "name": u["name"], "sqrt": u["sqrt"], "sectors": secs})
+            unis.append({"id": u["id"], "name": u["name"], "sqrt": u["sqrt"], "equal": bool(u.get("equal")), "sectors": secs})
     return {
         "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "regime": {"ok": reg.get("ok"), "why": reg.get("why")},
@@ -346,6 +395,9 @@ def load_anchors(symbols, path="anchors.json"):
 def main():
     lists, names, industry = get_universes()
     unis = layout_of(lists, industry)
+    muka = load_muka()
+    if muka:
+        unis.insert(len(unis) - 1, muka_universe(muka))   # just before the ETF map
     symbols = sorted({s for u in unis for sec in u["sectors"] for s in sec["symbols"]} | set(INDICES))
     print(f"{len(symbols)} symbols")
     rows = download(symbols, period="13mo", interval="1d")
@@ -355,6 +407,11 @@ def main():
         print(f"Long-range history unavailable ({e}). Showing periods up to 1 year only.")
         anchors = {}
     data = build(rows, anchors, unis, names)
+    if muka:
+        try:
+            data["muka"] = muka_index(rows, muka)
+        except Exception as e:
+            print(f"Muka index not calculated ({e}).")
     n = len(data["symbols"])
     if n < 30:
         sys.exit(f"Only {n} symbols had enough data, not publishing.")
@@ -363,6 +420,8 @@ def main():
         json.dump(data, f, separators=(",", ":"))
     # one year of closes per symbol for the hover chart, loaded by the page only when needed
     spark = {sym: [round(r["c"], 2) for r in rows[sym][-252:]] for sym in data["symbols"]}
+    if data.get("muka"):
+        spark["MUKA"] = data["muka"]["level"]
     with open("site/spark.json", "w") as f:
         json.dump(spark, f, separators=(",", ":"))
     print(f"Wrote site/data.json with {n} symbols. {data['regime']['why']}")

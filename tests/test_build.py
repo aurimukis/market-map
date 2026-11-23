@@ -88,3 +88,19 @@ def test_pick_handles_footnote_marks_and_industry_column():
     assert sym == "Ticker[2]" and sec == "ICB Industry[3]"
     d = pd.DataFrame({"Symbol[1]": [f"D{i}" for i in range(30)]})
     assert F._pick([d], 25, want_sector=False)[1] == "Symbol[1]"
+
+
+def test_muka_index_equal_weight_and_membership():
+    cfg = {"inception": "2025-01-02", "base": 100, "themes": {"T": ["A", "B"]}, "added": {"C": "2025-01-06"}, "removed": {}}
+    mk2 = lambda cs: [{"d": d, "c": c} for d, c in zip(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"], cs)]
+    rows = {"SPY": mk2([100, 100, 100, 100]), "A": mk2([10, 11, 11, 11]), "B": mk2([10, 10, 10, 10]), "C": mk2([5, 5, 5, 10])}
+    m = F.muka_index(rows, cfg)
+    # day2 +5% (A +10%, B 0); day3 0%; day4 C joined at the 01-06 close, so counts: A 0, B 0, C +100% => +33.3%
+    assert m["level"][1] == 105.0 and m["level"][2] == 105.0
+    assert abs(m["level"][3] - 105 * (1 + 1 / 3)) < 0.01
+    assert m["spy_pct"] == 0.0
+
+
+def test_muka_universe_is_equal_weight():
+    u = F.muka_universe(F.load_muka())
+    assert u["equal"] and len(F.muka_symbols(F.load_muka())) == 30

@@ -34,6 +34,11 @@
   .seg button.on { background:#4a5170; font-weight:600; }
   .legend .sw { padding:2px 8px; font-size:10px; color:#fff; font-weight:600; }
   #regime { font-size:12px; padding:0 10px 4px; color:var(--mut); }
+  #muka { display:none; margin:0 10px 6px; font-size:12px; color:var(--mut); }
+  #muka .top { display:flex; flex-wrap:wrap; gap:4px 16px; align-items:center; }
+  #muka .big { font-size:20px; font-weight:700; color:var(--fg); }
+  #muka summary { cursor:pointer; color:#8ab4ff; margin-top:2px; }
+  #muka .log { margin:4px 0 0; padding-left:16px; line-height:1.45; } #muka .log b { color:var(--fg); }
   #map { position:relative; flex:1; min-height:300px; margin:0 4px; }
   .sec { position:absolute; border:1px solid var(--bg); }
   .sec > .name { position:absolute; left:3px; top:0; font-size:12px; font-weight:600; color:#e6e8ef; text-transform:uppercase;
@@ -77,6 +82,7 @@
   <div class="tabs" id="tabs"></div>
 </div>
 <div id="regime"></div>
+<div id="muka"></div>
 <div id="map"></div>
 <footer>
   <div id="updated"></div>
@@ -149,6 +155,24 @@ async function load() {
   } catch (e) { document.getElementById("updated").textContent = "Could not load data. Retrying."; }
 }
 
+function mukaPanel(U) {
+  const el = document.getElementById("muka"), m = data.muka;
+  if (U.id !== "muka" || !m) { el.style.display = "none"; return; }
+  const lo = Math.min(...m.level, ...m.spy), hi = Math.max(...m.level, ...m.spy), n = m.level.length;
+  const pts = a => a.map((v, i) => `${n < 2 ? 0 : (i / (n - 1) * 118 + 1).toFixed(1)},${(31 - (v - lo) / ((hi - lo) || 1) * 28).toFixed(1)}`).join(" ");
+  const cls = v => v >= 0 ? "up" : "down";
+  const dayCount = n - 1, diff = m.pct - m.spy_pct;
+  el.innerHTML = `<div class="top"><span><span class="big">${m.level[n - 1].toFixed(2)}</span> ${m.name} index (100 on ${m.inception})</span>
+    <span>Since start <b class="${cls(m.pct)}">${fmt(m.pct)}</b></span><span>S&amp;P 500 (SPY) <b class="${cls(m.spy_pct)}">${fmt(m.spy_pct)}</b></span>
+    <span>vs SPY <b class="${cls(diff)}">${diff > 0 ? "+" : ""}${diff.toFixed(1)} pts</b></span>
+    <svg width="120" height="34" aria-label="Index versus SPY"><polyline points="${pts(m.spy)}" fill="none" stroke="#9aa0ae" stroke-width="1.5"/><polyline points="${pts(m.level)}" fill="none" stroke="#4ee37b" stroke-width="1.8"/></svg>
+    <span>${dayCount} trading day${dayCount === 1 ? "" : "s"} of history</span></div>
+    <details><summary>Board log and rules</summary><ul class="log">
+    ${m.board.slice().reverse().map(b => `<li><b>${b.date}</b> ${b.text}</li>`).join("")}
+    </ul><ul class="log">${m.rules.map(r => `<li>${r}</li>`).join("")}<li>Bench: ${m.bench.join(", ")}.</li><li>${m.method} A made-up paper index to watch, not a fund and not advice.</li></ul></details>`;
+  el.style.display = "block";
+}
+
 function header() {
   document.getElementById("idx").innerHTML = (data.indices || []).map(s => {
     const v = data.symbols[s][key]; return `<span><b>${s}</b> <span class="${v >= 0 ? "up" : "down"}">${fmt(v)}</span></span>`;
@@ -174,7 +198,8 @@ function draw(flash) {
   const map = document.getElementById("map");
   const W = map.clientWidth, H = map.clientHeight;
   map.innerHTML = "";
-  const sz = it => U.sqrt ? Math.sqrt(it.size) : it.size;
+  mukaPanel(U);
+  const sz = it => U.equal ? 1 : (U.sqrt ? Math.sqrt(it.size) : it.size);
   const secs = U.sectors.map(sec => {
     const inds = (sec.industries && sec.industries.length ? sec.industries : [{name: "", symbols: sec.symbols}]).map(ind => {
       const items = ind.symbols.map(s => ({s, ...data.symbols[s]})).sort((a, b) => sz(b) - sz(a));
