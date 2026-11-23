@@ -78,7 +78,7 @@
 <div class="bar">
   <select id="uni" aria-label="Index"></select>
   <input id="q" type="search" placeholder="Ticker" autocomplete="off" autocapitalize="characters" spellcheck="false">
-  <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button></div>
+  <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button><button data-m="ai">AI</button></div>
   <div class="tabs" id="tabs"></div>
 </div>
 <div id="regime"></div>
@@ -107,17 +107,25 @@ const FULL = {d1:10, d5:10, d1m:20, ytd:40, y1:50, y2:80, y3:100, y5:150, max:30
 const fmt = p => p == null ? "n/a" : (p > 0 ? "+" : "") + p.toFixed(1) + "%";
 const SIGBG = {"BUY SETUP":"rgb(38,176,80)","SETUP (weak mkt)":"rgb(196,170,40)","HOLD / WATCH":"rgb(214,126,46)","AVOID":"rgb(205,64,72)"};
 const SIGNAMES = [["BUY SETUP","Buy"],["SETUP (weak mkt)","Setup, weak market"],["HOLD / WATCH","Hold / watch"],["AVOID","Avoid"]];
+const AIBG = ["rgb(74,80,100)","rgb(191,219,254)","rgb(96,165,250)","rgb(37,99,235)","rgb(30,58,160)"];
+const AINAMES = ["Minimal","Low","Medium","High","Core"];
+const aiText = v => v >= 3 || v === 0 ? "#fff" : "#0b1b3a";
 const SIGCOL = {"BUY SETUP":"#ffe66d","SETUP (weak mkt)":"#ffd9a0","HOLD / WATCH":"#e6e8ef","AVOID":"#ffb3b3"};
 const PERIODS = [["d1","Today"],["d5","5 days"],["d1m","1 month"],["ytd","YTD"],["y1","1 year"],["y2","2 years"],["y3","3 years"],["y5","5 years"],["max","Max"]];
 let data = null, key = "d1", uni = "sp500", mode = "perf", prev = {};
 try { key = localStorage.getItem("mm_key") || key; uni = localStorage.getItem("mm_uni") || uni; mode = localStorage.getItem("mm_mode") || mode; } catch (e) {}
-if (mode !== "signal") mode = "perf";
+if (mode !== "signal" && mode !== "ai") mode = "perf";
 if (!PERIODS.some(p => p[0] === key)) key = "d1";
 const save = () => { try { localStorage.setItem("mm_key", key); localStorage.setItem("mm_uni", uni); localStorage.setItem("mm_mode", mode); } catch (e) {} };
 
 function legend() {
   const el = document.getElementById("legend");
-  if (mode === "signal") {
+  if (mode === "ai") {
+    const U = data && (data.universes.find(u => u.id === uni) || data.universes[0]);
+    const count = [0, 0, 0, 0, 0];
+    if (U) U.sectors.forEach(s => s.symbols.forEach(sym => { const a = data.symbols[sym].ai; if (a != null) count[a]++; }));
+    el.innerHTML = [4, 3, 2, 1, 0].map(a => `<span class="sw" style="background:${AIBG[a]};color:${aiText(a)}">${AINAMES[a]} AI exposure${U ? " " + count[a] : ""}</span>`).join("");
+  } else if (mode === "signal") {
     const U = data && (data.universes.find(u => u.id === uni) || data.universes[0]);
     const count = {};
     if (U) U.sectors.forEach(s => s.symbols.forEach(sym => { const g = data.symbols[sym].signal; count[g] = (count[g] || 0) + 1; }));
@@ -132,7 +140,7 @@ tabs.innerHTML = PERIODS.map(([k, n]) => `<button data-k="${k}">${n}</button>`).
 function marks() {
   tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === key));
   document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x.dataset.m === mode));
-  tabs.style.opacity = mode === "signal" ? ".55" : "1";
+  tabs.style.opacity = mode !== "perf" ? ".55" : "1";
   legend();
 }
 document.querySelectorAll("#mode button").forEach(b => b.onclick = () => { mode = b.dataset.m; save(); marks(); draw(false); });
@@ -226,7 +234,7 @@ function draw(flash) {
         hh = 12;
         const hd = document.createElement("div");
         hd.className = "hd"; hd.textContent = ind.name;
-        hd.style.background = mode === "signal" ? "#3a3e50" : colour(norm(avgOf(ind.items)));
+        hd.style.background = mode !== "perf" ? "#3a3e50" : colour(norm(avgOf(ind.items)));
         ib.appendChild(hd);
       }
       box.appendChild(ib);
@@ -235,7 +243,8 @@ function draw(flash) {
         const t = document.createElement("div");
         t.className = "tile";
         t.dataset.s = it.s;
-        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${mode === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
+        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${mode === "ai" ? (it.ai == null ? "rgb(64,68,84)" : AIBG[it.ai]) : mode === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
+        if (mode === "ai" && it.ai != null) t.style.color = aiText(it.ai);
         const len = it.s.length;
         // font sized to the tile, and never wider than the tile (about 0.66em per capital letter)
         let fs = Math.min(26, Math.min(w, h) / 3.2, (w - 4) / (0.66 * len));
@@ -276,6 +285,7 @@ function showTip(it) {
   tip.innerHTML = `<span class="x" onclick="document.getElementById('tip').style.display='none'">&times;</span>` +
     `<div class="t">${it.s} <span style="font-weight:400">$${it.price}</span></div>` + (it.n ? `<div class="n">${it.n}</div>` : "") +
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
+    (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
     `<div class="ch">${chart(it.s)}</div>` +
     `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
@@ -324,6 +334,7 @@ function showHover(e, it) {
   el.innerHTML = `<div class="t">${it.s} <span style="font-weight:400">$${it.price}</span></div>` +
     (it.n ? `<div class="n">${it.n}</div>` : "") +
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
+    (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<table>` + PERIODS.map(([k, n]) => `<tr${k === key ? ' style="font-weight:700"' : ""}><td>${n}</td>` +
       `<td class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</td></tr>`).join("") + `</table>` + chart(it.s);
   el.style.display = "block"; moveHover(e);

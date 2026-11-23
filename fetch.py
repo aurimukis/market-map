@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 
 from dateutil.relativedelta import relativedelta
 
+import ai as AI
 import signals as S
 
 BENCH = "SPY"
@@ -317,6 +318,19 @@ def build(rows_by_sym, anchors_by_sym, universes, names=None):
         recs[sym]["signal"] = signal(inds[sym], ok)
         if names.get(sym):
             recs[sym]["n"] = names[sym]
+    where = {}                      # symbol -> (sector, industry) from the first real index it appears in
+    for u in universes:
+        if u["id"] in ("sp500", "ndx", "dow"):
+            for sec in u["sectors"]:
+                for ind in sec.get("industries", []):
+                    for s in ind["symbols"]:
+                        where.setdefault(s, (sec["name"], ind["name"]))
+                for s in sec["symbols"]:
+                    where.setdefault(s, (sec["name"], ""))
+    etfs = {s for u in universes if u["id"] == "etf" for sec in u["sectors"] for s in sec["symbols"]}
+    for sym in recs:
+        if sym not in etfs and sym not in INDICES:
+            recs[sym]["ai"] = AI.score(sym, *where.get(sym, (None, None)))
     unis = []
     for u in universes:
         secs = []

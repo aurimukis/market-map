@@ -104,3 +104,12 @@ def test_muka_index_equal_weight_and_membership():
 def test_muka_universe_is_equal_weight():
     u = F.muka_universe(F.load_muka())
     assert u["equal"] and len(F.muka_symbols(F.load_muka())) == 35
+
+
+def test_ai_scores_and_defaults():
+    import ai
+    assert ai.score("NVDA") == 4 and ai.score("XOM") == 0
+    assert ai.score("ZZZZ", "Information Technology") == 2
+    assert ai.score("ZZZZ", "Information Technology", "Semiconductors") == 3
+    assert ai.score("ZZZZ", "Energy") == 0
+    assert all(0 <= v <= 4 for v in ai.EXPLICIT.values())
