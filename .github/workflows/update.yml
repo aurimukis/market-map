@@ -52,5 +52,14 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+      - name: Let the uploaded page settle before deploying
+        run: sleep 20
       - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Deploy again if the first try missed the artifact
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 40
+      - id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
