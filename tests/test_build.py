@@ -78,3 +78,12 @@ def test_pick_table_flexible_columns():
         assert False
     except ValueError:
         pass
+
+
+def test_pick_handles_footnote_marks_and_industry_column():
+    import pandas as pd
+    t = pd.DataFrame({"Ticker[2]": [f"T{i}" for i in range(100)], "ICB Industry[3]": "Energy"})
+    _, sym, sec = F._pick([t], 90)
+    assert sym == "Ticker[2]" and sec == "ICB Industry[3]"
+    d = pd.DataFrame({"Symbol[1]": [f"D{i}" for i in range(30)]})
+    assert F._pick([d], 25, want_sector=False)[1] == "Symbol[1]"

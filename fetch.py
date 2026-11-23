@@ -65,19 +65,25 @@ def _flat(c):
     return " ".join(str(x) for x in c) if isinstance(c, tuple) else str(c)
 
 
+def _name(c):
+    import re
+    return re.sub(r"\[.*?\]", "", c).strip().lower()   # drop footnote marks like "Symbol[1]"
+
+
 def _pick(tables, min_rows, want_sector=True):
-    """First big table with a ticker column (Symbol or Ticker), and a sector column when wanted."""
+    """First big table with a ticker column (Symbol or Ticker), and a sector or industry column when wanted."""
     seen = []
     for t in tables:
         cols = [_flat(c) for c in t.columns]
         seen.append(cols)
-        sym = next((c for c in cols if c.strip().lower() in ("symbol", "ticker")), None)
-        sec = next((c for c in cols if "sector" in c.lower()), None)
+        sym = next((c for c in cols if _name(c) in ("symbol", "ticker")), None)
+        sec = next((c for c in cols if _name(c).endswith("sector") or _name(c).endswith("industry")), None)
         if sym and (sec or not want_sector) and len(t) >= min_rows:
             t = t.copy()
             t.columns = cols
             return t, sym, sec
-    raise ValueError(f"no suitable table, columns seen: {seen[:6]}")
+    raise ValueError(f"no suitable table, {len(seen)} tables, symbol-like columns: " +
+                     str([[c for c in cols if "sym" in c.lower() or "tick" in c.lower()] for cols in seen][:30]))
 
 
 def _clean(x):
@@ -95,8 +101,10 @@ def universes_from_wikipedia():
     except Exception as e:
         print(f"S&P 500 list unavailable: {e}")
     try:
-        t, sym, sec = _pick(_get_tables(base + "Nasdaq-100"), 90)
-        out["ndx"] = [(_clean(r[sym]), _clean(r[sec])) for _, r in t.iterrows()]
+        t, sym, sec = _pick(_get_tables(base + "Nasdaq-100"), 90, want_sector=False)
+        # the page uses a different industry scheme, so reuse the S&P sector where the company is in both
+        out["ndx"] = [(_clean(r[sym]), sector_of.get(_clean(r[sym]), _clean(r[sec]) if sec else "Other"))
+                      for _, r in t.iterrows()]
     except Exception as e:
         print(f"Nasdaq 100 list unavailable: {e}")
     try:
