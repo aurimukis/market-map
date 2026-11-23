@@ -62,3 +62,19 @@ def test_parse_download_shape():
 def test_group_and_layout():
     g = F.group([("A", "X"), ("B", "X"), ("C", "Y")])
     assert g == [{"name": "X", "symbols": ["A", "B"]}, {"name": "Y", "symbols": ["C"]}]
+
+
+def test_pick_table_flexible_columns():
+    import pandas as pd
+    big = pd.DataFrame({"Ticker": [f"T{i}" for i in range(100)], "Company": "x", "GICS Sector": "Energy"})
+    small = pd.DataFrame({"Symbol": ["A"], "Industry": ["x"]})
+    t, sym, sec = F._pick([small, big], 90)
+    assert (sym, sec) == ("Ticker", "GICS Sector")
+    dow = pd.DataFrame({"Company": "x", "Symbol": [f"D{i}" for i in range(30)], "Industry": "y"})
+    t, sym, sec = F._pick([small, dow], 25, want_sector=False)
+    assert sym == "Symbol" and sec is None
+    try:
+        F._pick([small], 25)
+        assert False
+    except ValueError:
+        pass

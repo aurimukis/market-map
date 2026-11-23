@@ -61,27 +61,50 @@ def _get_tables(url):
     return pd.read_html(io.StringIO(r.text))
 
 
-def _find(tables, need, min_rows):
+def _flat(c):
+    return " ".join(str(x) for x in c) if isinstance(c, tuple) else str(c)
+
+
+def _pick(tables, min_rows, want_sector=True):
+    """First big table with a ticker column (Symbol or Ticker), and a sector column when wanted."""
+    seen = []
     for t in tables:
-        cols = [str(c) for c in t.columns]
-        if all(any(n.lower() == c.lower() for c in cols) for n in need) and len(t) >= min_rows:
-            return t
-    raise ValueError(f"no table with columns {need}")
+        cols = [_flat(c) for c in t.columns]
+        seen.append(cols)
+        sym = next((c for c in cols if c.strip().lower() in ("symbol", "ticker")), None)
+        sec = next((c for c in cols if "sector" in c.lower()), None)
+        if sym and (sec or not want_sector) and len(t) >= min_rows:
+            t = t.copy()
+            t.columns = cols
+            return t, sym, sec
+    raise ValueError(f"no suitable table, columns seen: {seen[:6]}")
+
+
+def _clean(x):
+    return str(x).strip()
 
 
 def universes_from_wikipedia():
     base = "https://en.wikipedia.org/wiki/"
-    sp = _find(_get_tables(base + "List_of_S%26P_500_companies"), ["Symbol", "GICS Sector"], 400)
-    sector_of = {str(r["Symbol"]).strip(): str(r["GICS Sector"]).strip() for _, r in sp.iterrows()}
-    ndx = _find(_get_tables(base + "Nasdaq-100"), ["Ticker", "GICS Sector"], 90)
-    ndx_list = [(str(r["Ticker"]).strip(), str(r["GICS Sector"]).strip()) for _, r in ndx.iterrows()]
-    dow = _find(_get_tables(base + "Dow_Jones_Industrial_Average"), ["Symbol"], 25)
-    dow_syms = [str(s).strip() for s in dow["Symbol"]]
-    return {
-        "sp500": list(sector_of.items()),
-        "ndx": ndx_list,
-        "dow": [(s, sector_of.get(s, "Other")) for s in dow_syms],
-    }
+    out = {}
+    sector_of = {}
+    try:
+        t, sym, sec = _pick(_get_tables(base + "List_of_S%26P_500_companies"), 400)
+        sector_of = {_clean(r[sym]): _clean(r[sec]) for _, r in t.iterrows()}
+        out["sp500"] = list(sector_of.items())
+    except Exception as e:
+        print(f"S&P 500 list unavailable: {e}")
+    try:
+        t, sym, sec = _pick(_get_tables(base + "Nasdaq-100"), 90)
+        out["ndx"] = [(_clean(r[sym]), _clean(r[sec])) for _, r in t.iterrows()]
+    except Exception as e:
+        print(f"Nasdaq 100 list unavailable: {e}")
+    try:
+        t, sym, _ = _pick(_get_tables(base + "Dow_Jones_Industrial_Average"), 25, want_sector=False)
+        out["dow"] = [(_clean(r[sym]), sector_of.get(_clean(r[sym]), "Other")) for _, r in t.iterrows()]
+    except Exception as e:
+        print(f"Dow 30 list unavailable: {e}")
+    return out
 
 
 def universes_fallback():
@@ -93,11 +116,14 @@ def universes_fallback():
 def get_universes():
     try:
         u = universes_from_wikipedia()
-        print("Constituent lists read from Wikipedia:", {k: len(v) for k, v in u.items()})
-        return u
     except Exception as e:  # never let a changed web page stop the map
-        print(f"Wikipedia lists unavailable ({e}). Using the built-in list.")
-        return universes_fallback()
+        print(f"Wikipedia lists unavailable ({e}).")
+        u = {}
+    fb = universes_fallback()
+    for k, v in fb.items():       # anything that could not be read falls back to the built-in list
+        u.setdefault(k, v)
+    print("Constituent lists:", {k: len(v) for k, v in u.items()})
+    return u
 
 
 def group(pairs):
@@ -228,9 +254,17 @@ def parse_download(df, symbols):
 
 def download(symbols, **kw):
     import yfinance as yf
-    df = yf.download([s.replace(".", "-") for s in symbols], group_by="ticker", auto_adjust=True,
-                     threads=True, progress=False, **kw)
-    return parse_download(df, symbols)
+
+    def get(syms, threads):
+        df = yf.download([s.replace(".", "-") for s in syms], group_by="ticker", auto_adjust=True,
+                         threads=threads, progress=False, **kw)
+        return parse_download(df, syms)
+
+    out = get(symbols, True)
+    missing = [s for s in symbols if s not in out]
+    if 0 < len(missing) <= 40:   # a few can fail on a busy cache ("database is locked"): retry them one by one
+        out.update(get(missing, False))
+    return out
 
 
 def load_anchors(symbols, path="anchors.json"):
