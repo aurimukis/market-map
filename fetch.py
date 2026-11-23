@@ -455,6 +455,7 @@ def main():
         with open("site/fund.json", "w") as f:
             json.dump({s: {"d": v["d"], "s": v["s"]} for s, v in cache.items() if s in data["symbols"]}, f, separators=(",", ":"))
         print(f"Fundamentals: {done} fetched this run, {len(cache)} cached.")
+        print("Without details:", [s for s in order if s not in cache])
     except Exception as e:
         print(f"Fundamentals skipped ({e}).")
 
