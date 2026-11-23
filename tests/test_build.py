@@ -60,8 +60,9 @@ def test_parse_download_shape():
 
 
 def test_group_and_layout():
-    g = F.group([("A", "X"), ("B", "X"), ("C", "Y")])
-    assert g == [{"name": "X", "symbols": ["A", "B"]}, {"name": "Y", "symbols": ["C"]}]
+    g = F.group([("A", "X"), ("B", "X"), ("C", "Y")], {"A": "Alpha", "B": "Alpha", "C": "Gamma"})
+    assert g[0]["symbols"] == ["A", "B"] and g[0]["industries"] == [{"name": "Alpha", "symbols": ["A", "B"]}]
+    assert F.group([("A", "X")])[0]["industries"] == [{"name": "", "symbols": ["A"]}]
 
 
 def test_pick_table_flexible_columns():

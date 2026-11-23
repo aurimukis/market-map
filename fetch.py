@@ -123,6 +123,9 @@ def universes_from_wikipedia():
         t, sym, sec = _pick(_get_tables(base + "List_of_S%26P_500_companies"), 400)
         sector_of = {_clean(r[sym]): _clean(r[sec]) for _, r in t.iterrows()}
         out["sp500"] = list(sector_of.items())
+        ind_col = next((c for c in t.columns if _name(c) in ("gics sub-industry", "gics sub industry")), None)
+        if ind_col:
+            out["_industry"] = {_clean(r[sym]): _clean(r[ind_col]) for _, r in t.iterrows()}
         name_col = next((c for c in t.columns if _name(c) in ("security", "company")), None)
         if name_col:
             out["_names"] = {_clean(r[sym]): _clean(r[name_col]) for _, r in t.iterrows()}
@@ -160,25 +163,35 @@ def get_universes():
     for k, v in fb.items():       # anything that could not be read falls back to the built-in list
         u.setdefault(k, v)
     names = u.pop("_names", {})
-    print("Constituent lists:", {k: len(v) for k, v in u.items()}, "names:", len(names))
-    return u, names
+    industry = u.pop("_industry", {})
+    print("Constituent lists:", {k: len(v) for k, v in u.items()}, "names:", len(names), "industries:", len(industry))
+    return u, names, industry
 
 
-def group(pairs):
+def group(pairs, industry=None):
+    """pairs: (symbol, sector). Each sector lists its symbols and, when known, its industries."""
     out = {}
     for sym, sec in pairs:
         out.setdefault(sec, []).append(sym)
-    return [{"name": k, "symbols": v} for k, v in out.items()]
+    result = []
+    for sec, syms in out.items():
+        inds = {}
+        for s in syms:
+            inds.setdefault((industry or {}).get(s, ""), []).append(s)
+        result.append({"name": sec, "symbols": syms,
+                       "industries": [{"name": k, "symbols": v} for k, v in inds.items()]})
+    return result
 
 
-def layout_of(unis):
+def layout_of(unis, industry=None):
     out = []
     names = {"sp500": "S&P 500", "ndx": "Nasdaq 100", "dow": "Dow 30"}
     for key in ("sp500", "ndx", "dow"):
         if key in unis:
-            out.append({"id": key, "name": names[key], "sqrt": False, "sectors": group(unis[key])})
+            out.append({"id": key, "name": names[key], "sqrt": False, "sectors": group(unis[key], industry)})
     out.append({"id": "etf", "name": "Markets (ETFs)", "sqrt": True,
-                "sectors": [{"name": k, "symbols": v} for k, v in ETFS.items()]})
+                "sectors": [{"name": k, "symbols": v, "industries": [{"name": "", "symbols": v}]}
+                            for k, v in ETFS.items()]})
     return out
 
 
@@ -261,7 +274,12 @@ def build(rows_by_sym, anchors_by_sym, universes, names=None):
         for sec in u["sectors"]:
             have = [s for s in sec["symbols"] if s in recs]
             if have:
-                secs.append({"name": sec["name"], "symbols": have})
+                inds = []
+                for ind in sec.get("industries", []):
+                    keep = [s for s in ind["symbols"] if s in recs]
+                    if keep:
+                        inds.append({"name": ind["name"], "symbols": keep})
+                secs.append({"name": sec["name"], "symbols": have, "industries": inds})
         if secs:
             unis.append({"id": u["id"], "name": u["name"], "sqrt": u["sqrt"], "sectors": secs})
     return {
@@ -326,8 +344,8 @@ def load_anchors(symbols, path="anchors.json"):
 
 
 def main():
-    lists, names = get_universes()
-    unis = layout_of(lists)
+    lists, names, industry = get_universes()
+    unis = layout_of(lists, industry)
     symbols = sorted({s for u in unis for sec in u["sectors"] for s in sec["symbols"]} | set(INDICES))
     print(f"{len(symbols)} symbols")
     rows = download(symbols, period="13mo", interval="1d")
