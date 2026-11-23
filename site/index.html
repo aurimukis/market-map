@@ -87,7 +87,6 @@
 <footer>
   <div id="updated"></div>
   <div class="legend" id="legend"></div>
-  <div>Tile size is dollar volume (not exact market cap). Colour scale widens for longer periods. Long periods include dividend adjustment. Prices from Yahoo, up to about 15 minutes delayed. Signal colours: green = buy setup (uptrend, entry setup, market OK), yellow = setup but market weak, orange = hold / watch (uptrend, no entry yet), red = avoid (no uptrend). One simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
 </footer>
 <div id="tip"></div>
 <div id="hover"></div>
@@ -181,7 +180,7 @@ function header() {
   const t = new Date(data.updated);
   const age = Math.round((Date.now() - t) / 60000);
   document.getElementById("updated").textContent = "Updated " + t.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"}) +
-    " (" + (age < 1 ? "just now" : age + " min ago") + "). Refreshes every minute; new data lands about every 5 minutes while US markets are open.";
+    " (" + (age < 1 ? "just now" : age + " min ago") + "). Refreshes every minute; prices delayed up to 15 minutes. Not advice.";
 }
 
 function avgOf(items) {
