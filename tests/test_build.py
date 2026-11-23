@@ -113,3 +113,19 @@ def test_ai_scores_and_defaults():
     assert ai.score("ZZZZ", "Information Technology", "Semiconductors") == 3
     assert ai.score("ZZZZ", "Energy") == 0
     assert all(0 <= v <= 4 for v in ai.EXPLICIT.values())
+
+
+def test_fundamentals_scores_and_refresh():
+    import fundamentals as FD
+    strong = {"currentPrice": 100, "targetMeanPrice": 130, "trailingEps": 4, "forwardEps": 5.5, "trailingPE": 20, "forwardPE": 18,
+              "priceToBook": 2, "pegRatio": 1.0, "enterpriseToEbitda": 12, "recommendationMean": 1.9, "revenueGrowth": 0.2,
+              "returnOnEquity": 0.3, "profitMargins": 0.25, "earningsGrowth": 0.2, "currentRatio": 2, "debtToEquity": 30,
+              "freeCashflow": 5, "totalCash": 10, "totalDebt": 5, "dividendRate": 3, "payoutRatio": 0.4, "fiveYearAvgDividendYield": 2.0,
+              "longBusinessSummary": "A. " * 300}
+    assert FD.scores(strong) == [6, 6, 6, 6, 5]      # 3% yield: not 4% or more
+    assert FD.scores({}) == [0, 0, 0, 0, 0]
+    assert len(FD.short(strong["longBusinessSummary"])) <= 335
+    cache = {}
+    n = FD.refresh(["A", "B", "C"], cache, ticker=lambda s: strong if s != "B" else {}, pause=0)
+    assert n == 2 and set(cache) == {"A", "C"}
+    assert FD.refresh(["A", "C"], cache, ticker=lambda s: 1 / 0, pause=0) == 0   # fresh entries are not refetched

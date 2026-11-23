@@ -41,6 +41,12 @@ jobs:
         with:
           path: anchors.json
           key: anchors-${{ steps.day.outputs.d }}
+      - name: Fundamentals cache (kept between runs, topped up a little each time)
+        uses: actions/cache@v4
+        with:
+          path: fund-cache.json
+          key: fund-${{ github.run_id }}
+          restore-keys: fund-
       - name: Fetch data
         run: python fetch.py
       - uses: actions/upload-pages-artifact@v3

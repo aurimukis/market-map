@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 from dateutil.relativedelta import relativedelta
 
 import ai as AI
+import fundamentals as FD
 import signals as S
 
 BENCH = "SPY"
@@ -233,6 +234,11 @@ def muka_index(rows_by_sym, cfg, bench=BENCH):
     }
 
 
+def ai_scope(unis):
+    """Stocks (not ETFs) that get a description and radar."""
+    return {s for u in unis if u["id"] != "etf" for sec in u["sectors"] for s in sec["symbols"]}
+
+
 def layout_of(unis, industry=None):
     out = []
     names = {"sp500": "S&P 500", "ndx": "Nasdaq 100", "dow": "Dow 30"}
@@ -439,6 +445,18 @@ def main():
     with open("site/spark.json", "w") as f:
         json.dump(spark, f, separators=(",", ":"))
     print(f"Wrote site/data.json with {n} symbols. {data['regime']['why']}")
+    try:   # descriptions and radar scores: slow to fetch, so a time-boxed top-up each run, cached between runs
+        cache = FD.load()
+        scope = ai_scope(unis)
+        order = [s for s in (muka_symbols(muka) if muka else []) if s in data["symbols"]] + \
+                [s for s in data["symbols"] if s in scope]
+        done = FD.refresh(list(dict.fromkeys(order)), cache)
+        FD.save(cache)
+        with open("site/fund.json", "w") as f:
+            json.dump({s: {"d": v["d"], "s": v["s"]} for s, v in cache.items() if s in data["symbols"]}, f, separators=(",", ":"))
+        print(f"Fundamentals: {done} fetched this run, {len(cache)} cached.")
+    except Exception as e:
+        print(f"Fundamentals skipped ({e}).")
 
 
 if __name__ == "__main__":

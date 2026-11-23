@@ -3,3 +3,5 @@ __pycache__/
 site/data.json
 anchors.json
 site/spark.json
+site/fund.json
+fund-cache.json

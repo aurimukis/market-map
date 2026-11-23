@@ -65,7 +65,7 @@
   #hover svg { display:block; margin-top:6px; }
   footer { padding:6px 10px 8px; font-size:10.5px; color:var(--mut); }
   #tip { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); background:#2a2d38; max-width:420px;
-    border-radius:12px; padding:12px 14px; font-size:13px; display:none; z-index:30; box-shadow:0 4px 18px #000a; line-height:1.4; }
+    border-radius:12px; padding:12px 14px; font-size:13px; display:none; max-height:72vh; overflow-y:auto; z-index:30; box-shadow:0 4px 18px #000a; line-height:1.4; }
   #tip .t { font-size:16px; font-weight:700; } #tip .n { color:var(--mut); }
   #tip .row { display:flex; flex-wrap:wrap; gap:2px 12px; margin:6px 0 2px; font-size:12px; }
   .legend { display:flex; align-items:center; gap:0; margin-top:4px; }
@@ -279,6 +279,7 @@ function draw(flash) {
 let hit = null;
 function showTip(it) {
   hideHover();
+  loadFund().then(() => { const fu = document.getElementById("tip").querySelector(".fu"); if (fu && document.getElementById("tip").dataset.s === it.s) fu.innerHTML = radar(it.s); });
   loadSpark().then(() => {
     const tip = document.getElementById("tip");
     if (tip.dataset.s === it.s && tip.style.display === "block") tip.querySelector(".ch").innerHTML = chart(it.s);
@@ -290,7 +291,7 @@ function showTip(it) {
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
     (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
-    `<div class="ch">${chart(it.s)}</div>` +
+    `<div class="ch">${chart(it.s)}</div><div class="fu">${radar(it.s)}</div>` +
     `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
   tip.style.display = "block";
 }
@@ -310,6 +311,24 @@ function search(q, go) {
 }
 document.getElementById("q").addEventListener("input", e => search(e.target.value, false));
 document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") { search(e.target.value, true); e.target.blur(); } });
+let fund = null, fundTried = false;
+async function loadFund() {
+  if (fundTried) return; fundTried = true;
+  try { fund = await (await fetch("fund.json?d=" + new Date().toISOString().slice(0, 13))).json(); } catch (e) { fund = null; }
+}
+const AXES = ["Value", "Future", "Past", "Health", "Dividend"];
+function radar(sym) {
+  const f = fund && fund[sym]; if (!f) return "";
+  const R = 44, cx = 78, cy = 72, pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + Math.cos(a) * R * v / 6, cy + Math.sin(a) * R * v / 6]; };
+  const ring = v => AXES.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(",")).join(" ");
+  const shape = f.s.map((v, i) => pt(i, Math.max(v, .25)).map(x => x.toFixed(1)).join(",")).join(" ");
+  const labels = AXES.map((n, i) => { const [x, y] = pt(i, 7.4); return `<text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="#9aa0ae" font-size="9" text-anchor="middle">${n} ${f.s[i]}</text>`; }).join("");
+  return (f.d ? `<div style="margin:6px 0 2px;line-height:1.35;color:#d6d9e2">${f.d}</div>` : "") +
+    `<svg width="100%" viewBox="-12 4 180 140" style="max-width:260px;display:block;margin:0 auto">` +
+    [2, 4, 6].map(v => `<polygon points="${ring(v)}" fill="none" stroke="#3a3e50" stroke-width="1"/>`).join("") +
+    `<polygon points="${shape}" fill="#4ee37b" fill-opacity=".35" stroke="#4ee37b" stroke-width="1.6"/>${labels}</svg>` +
+    `<div style="color:#6f7586;font-size:10px;text-align:center">Fundamentals radar, each axis 0 to 6. Our own simple scoring from Yahoo data.</div>`;
+}
 let spark = null, sparkTried = false;
 async function loadSpark() {
   if (sparkTried) return sparkP; sparkTried = true; let done; sparkP = new Promise(r => done = r);
