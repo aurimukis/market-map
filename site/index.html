@@ -15,9 +15,13 @@
   .idx { display:flex; gap:10px; font-size:12px; flex-wrap:wrap; }
   .idx b { font-weight:600; }
   .up { color:#4ee37b; } .down { color:#ff6b6e; }
-  .tabs { margin-left:auto; display:flex; gap:4px; }
-  .tabs button { background:#2a2d38; color:var(--fg); border:0; border-radius:6px; padding:5px 10px; font-size:12px; }
+  .bar { display:flex; gap:8px; align-items:center; padding:0 10px 4px; }
+  .tabs { display:flex; gap:4px; overflow-x:auto; flex:1; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tabs button, select { background:#2a2d38; color:var(--fg); border:0; border-radius:6px; padding:6px 10px; font-size:12px;
+    white-space:nowrap; flex:none; }
   .tabs button.on { background:#4a5170; font-weight:600; }
+  select { padding:6px 8px; font-weight:600; }
   #regime { font-size:12px; padding:0 10px 4px; color:var(--mut); }
   #map { position:relative; flex:1; min-height:300px; margin:0 4px; }
   .sec { position:absolute; border:1px solid var(--bg); }
@@ -41,16 +45,17 @@
 <header>
   <h1>Market map</h1>
   <div class="idx" id="idx"></div>
-  <div class="tabs" id="tabs">
-    <button data-k="d1" class="on">Today</button><button data-k="d5">5 days</button><button data-k="d20">1 month</button>
-  </div>
 </header>
+<div class="bar">
+  <select id="uni" aria-label="Index"></select>
+  <div class="tabs" id="tabs"></div>
+</div>
 <div id="regime"></div>
 <div id="map"></div>
 <footer>
   <div id="updated"></div>
   <div class="legend" id="legend"></div>
-  <div>Tile size is dollar volume (not exact market cap). Prices from Yahoo, up to about 15 minutes delayed. Signals are one simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
+  <div>Tile size is dollar volume (not exact market cap). Colour scale widens for longer periods. Long periods include dividend adjustment. Prices from Yahoo, up to about 15 minutes delayed. Signals are one simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
 </footer>
 <div id="tip"></div>
 <script src="layout.js"></script>
@@ -65,28 +70,42 @@ function colour(p) {
   }
   return "rgb(64,68,84)";
 }
+// Longer periods move much more, so the colour scale widens (full colour at +/-10% today, up to +/-100% at max).
+const FULL = {d1:10, d5:10, d1m:20, ytd:40, y1:50, y2:80, y3:100, y5:150, max:300};
 const fmt = p => p == null ? "n/a" : (p > 0 ? "+" : "") + p.toFixed(1) + "%";
 const SIGCOL = {"BUY SETUP":"#ffe66d","SETUP (weak mkt)":"#ffd9a0","HOLD / WATCH":"#e6e8ef","AVOID":"#ffb3b3"};
-let data = null, key = "d1", prev = {};
+const PERIODS = [["d1","Today"],["d5","5 days"],["d1m","1 month"],["ytd","YTD"],["y1","1 year"],["y2","2 years"],["y3","3 years"],["y5","5 years"],["max","Max"]];
+let data = null, key = "d1", uni = "sp500", prev = {};
+try { key = localStorage.getItem("mm_key") || key; uni = localStorage.getItem("mm_uni") || uni; } catch (e) {}
+if (!PERIODS.some(p => p[0] === key)) key = "d1";
+const save = () => { try { localStorage.setItem("mm_key", key); localStorage.setItem("mm_uni", uni); } catch (e) {} };
 
-document.getElementById("legend").innerHTML = [-10,-6.7,-3.3,0,3.3,6.7,10]
-  .map(v => `<span style="background:${colour(v)}">${v ? (v > 0 ? "+" : "") + v : 0}%</span>`).join("");
-document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
-  key = b.dataset.k; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b)); draw(false);
-});
+function legend() {
+  document.getElementById("legend").innerHTML = [-10,-6.7,-3.3,0,3.3,6.7,10]
+    .map(v => { const n = Math.round(v / 10 * FULL[key] * 10) / 10; return `<span style="background:${colour(v)}">${n > 0 ? "+" : ""}${n}%</span>`; }).join("");
+}
+const tabs = document.getElementById("tabs");
+tabs.innerHTML = PERIODS.map(([k, n]) => `<button data-k="${k}">${n}</button>`).join("");
+function marks() { tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === key)); legend(); }
+tabs.querySelectorAll("button").forEach(b => b.onclick = () => { key = b.dataset.k; save(); marks(); draw(false); });
+document.getElementById("uni").onchange = e => { uni = e.target.value; save(); draw(false); };
+marks();
 
 async function load() {
   try {
     const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
     data = await r.json();
+    const sel = document.getElementById("uni");
+    sel.innerHTML = data.universes.map(u => `<option value="${u.id}">${u.name}</option>`).join("");
+    if (!data.universes.some(u => u.id === uni)) uni = data.universes[0].id;
+    sel.value = uni;
     draw(true);
   } catch (e) { document.getElementById("updated").textContent = "Could not load data. Retrying."; }
 }
 
 function header() {
-  const idx = data.indices || {};
-  document.getElementById("idx").innerHTML = Object.keys(idx).map(s => {
-    const v = idx[s][key]; return `<span><b>${s}</b> <span class="${v >= 0 ? "up" : "down"}">${fmt(v)}</span></span>`;
+  document.getElementById("idx").innerHTML = (data.indices || []).map(s => {
+    const v = data.symbols[s][key]; return `<span><b>${s}</b> <span class="${v >= 0 ? "up" : "down"}">${fmt(v)}</span></span>`;
   }).join("");
   document.getElementById("regime").textContent = "Market: " + (data.regime.why || "unknown");
   const t = new Date(data.updated);
@@ -98,10 +117,15 @@ function header() {
 function draw(flash) {
   if (!data) return;
   header();
+  const U = data.universes.find(u => u.id === uni) || data.universes[0];
   const map = document.getElementById("map");
   const W = map.clientWidth, H = map.clientHeight;
   map.innerHTML = "";
-  const secs = data.sectors.map(s => ({...s, total: s.items.reduce((a, i) => a + i.size, 0)})).sort((a, b) => b.total - a.total);
+  const sz = s => U.sqrt ? Math.sqrt(data.symbols[s].size) : data.symbols[s].size;
+  const secs = U.sectors.map(sec => {
+    const items = sec.symbols.map(s => ({s, ...data.symbols[s]})).sort((a, b) => sz(b.s) - sz(a.s));
+    return {name: sec.name, items, total: items.reduce((a, i) => a + sz(i.s), 0)};
+  }).sort((a, b) => b.total - a.total);
   const sr = squarify(secs.map(s => s.total), 0, 0, W, H);
   const fresh = {};
   secs.forEach((sec, si) => {
@@ -113,13 +137,13 @@ function draw(flash) {
     if (lab) { const n = document.createElement("div"); n.className = "name"; n.textContent = sec.name; box.appendChild(n); }
     map.appendChild(box);
     const top = lab ? 13 : 0;
-    const ir = squarify(sec.items.map(i => i.size), 0, top, sw, Math.max(sh - top, 1));
+    const ir = squarify(sec.items.map(i => sz(i.s)), 0, top, sw, Math.max(sh - top, 1));
     sec.items.forEach((it, k) => {
       const [x, y, w, h] = ir[k];
       const v = it[key];
       const t = document.createElement("div");
       t.className = "tile";
-      t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${colour(v)}`;
+      t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${colour(v == null ? null : v / FULL[key] * 10)}`;
       const m = Math.min(w, h);
       if (w > 26 && h > 18) {
         const fs = Math.max(8, Math.min(26, m / 3.2));
@@ -128,18 +152,18 @@ function draw(flash) {
         if (h > 58 && w > 76) html += `<div class="g" style="font-size:${Math.max(7, fs * .42)}px;color:${SIGCOL[it.signal]}">${it.signal}</div>`;
         t.innerHTML = html;
       }
-      fresh[it.s] = v;
-      if (flash && prev[it.s] != null && v != null && Math.abs(v - prev[it.s]) >= 0.05) t.classList.add(v > prev[it.s] ? "flash-up" : "flash-down");
+      fresh[it.s] = it.d1;
+      if (flash && prev[it.s] != null && it.d1 != null && Math.abs(it.d1 - prev[it.s]) >= 0.05) t.classList.add(it.d1 > prev[it.s] ? "flash-up" : "flash-down");
       t.onclick = () => {
         const tip = document.getElementById("tip");
-        tip.innerHTML = `<b>${it.s}</b> $${it.price} &nbsp; Today ${fmt(it.d1)} &nbsp; 5d ${fmt(it.d5)} &nbsp; 1m ${fmt(it.d20)}<br>` +
-          `<span style="color:${SIGCOL[it.signal]}">${it.signal}</span>`;
-        tip.style.display = "block"; clearTimeout(window._t); window._t = setTimeout(() => tip.style.display = "none", 5000);
+        tip.innerHTML = `<b>${it.s}</b> $${it.price} &nbsp; ` + PERIODS.map(([k, n]) => `${n} ${fmt(it[k])}`).join(" &middot; ") +
+          `<br><span style="color:${SIGCOL[it.signal]}">${it.signal}</span>`;
+        tip.style.display = "block"; clearTimeout(window._t); window._t = setTimeout(() => tip.style.display = "none", 6000);
       };
       box.appendChild(t);
     });
   });
-  if (flash) prev = fresh; else if (!Object.keys(prev).length) prev = fresh;
+  if (flash || !Object.keys(prev).length) prev = fresh;
 }
 window.addEventListener("resize", () => draw(false));
 load(); setInterval(load, 60000);
