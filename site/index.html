@@ -15,13 +15,20 @@
   .idx { display:flex; gap:10px; font-size:12px; flex-wrap:wrap; }
   .idx b { font-weight:600; }
   .up { color:#4ee37b; } .down { color:#ff6b6e; }
-  .bar { display:flex; gap:8px; align-items:center; padding:0 10px 4px; }
-  .tabs { display:flex; gap:4px; overflow-x:auto; flex:1; scrollbar-width:none; }
+  .bar { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; padding:0 10px 4px; }
+  .tabs { display:flex; gap:4px; overflow-x:auto; flex:1 1 100%; min-width:0; scrollbar-width:none; }
+  @media (min-width:900px) { .tabs { flex:1 1 0; } }
   .tabs::-webkit-scrollbar { display:none; }
   .tabs button, select { background:#2a2d38; color:var(--fg); border:0; border-radius:6px; padding:6px 10px; font-size:12px;
     white-space:nowrap; flex:none; }
   .tabs button.on { background:#4a5170; font-weight:600; }
   select { padding:6px 8px; font-weight:600; }
+  #q { background:#2a2d38; color:var(--fg); border:0; border-radius:6px; padding:6px 9px; font-size:12px; width:96px; flex:1 1 70px; max-width:130px; min-width:0; }
+  #q::placeholder { color:var(--mut); }
+  .tile.hit { outline:2px solid #fff; outline-offset:-2px; z-index:5; animation:pulse 1.2s ease-in-out 3; }
+  @keyframes pulse { 50% { outline-color:#ffe66d; } }
+  #tip a { color:#8ab4ff; text-decoration:none; font-weight:600; }
+  #tip .x { position:absolute; right:10px; top:6px; font-size:18px; color:var(--mut); }
   .seg { display:flex; flex:none; background:#2a2d38; border-radius:6px; padding:2px; gap:2px; }
   .seg button { background:transparent; color:var(--fg); border:0; border-radius:5px; padding:4px 9px; font-size:12px; }
   .seg button.on { background:#4a5170; font-weight:600; }
@@ -30,7 +37,7 @@
   #map { position:relative; flex:1; min-height:300px; margin:0 4px; }
   .sec { position:absolute; border:1px solid var(--bg); }
   .sec > .name { position:absolute; left:3px; top:0; font-size:12px; font-weight:600; color:#e6e8ef; text-transform:uppercase;
-    letter-spacing:.03em; white-space:nowrap; pointer-events:none; z-index:2; line-height:16px; }
+    letter-spacing:.03em; white-space:nowrap; pointer-events:none; z-index:2; line-height:16px; max-width:calc(100% - 6px); overflow:hidden; text-overflow:ellipsis; }
   .ind { position:absolute; border:1px solid var(--bg); }
   .ind > .hd { position:absolute; left:0; top:0; right:0; height:12px; font-size:8px; line-height:12px; padding:0 4px; color:#fff;
     font-weight:600; text-transform:uppercase; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -50,8 +57,10 @@
   #hover td { padding:1px 0; } #hover td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
   #hover svg { display:block; margin-top:6px; }
   footer { padding:6px 10px 8px; font-size:10.5px; color:var(--mut); }
-  #tip { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); background:#2a2d38;
-    border-radius:10px; padding:10px 12px; font-size:13px; display:none; z-index:10; box-shadow:0 4px 18px #0008; }
+  #tip { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); background:#2a2d38; max-width:420px;
+    border-radius:12px; padding:12px 14px; font-size:13px; display:none; z-index:30; box-shadow:0 4px 18px #000a; line-height:1.4; }
+  #tip .t { font-size:16px; font-weight:700; } #tip .n { color:var(--mut); }
+  #tip .row { display:flex; flex-wrap:wrap; gap:2px 12px; margin:6px 0 2px; font-size:12px; }
   .legend { display:flex; align-items:center; gap:0; margin-top:4px; }
   .legend span { padding:2px 7px; font-size:10px; color:#fff; }
 </style>
@@ -63,6 +72,7 @@
 </header>
 <div class="bar">
   <select id="uni" aria-label="Index"></select>
+  <input id="q" type="search" placeholder="Ticker" autocomplete="off" autocapitalize="characters" spellcheck="false">
   <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button></div>
   <div class="tabs" id="tabs"></div>
 </div>
@@ -128,7 +138,9 @@ marks();
 async function load() {
   try {
     const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
-    data = await r.json();
+    const fresh = await r.json();
+    if (data && fresh.updated === data.updated) { header(); return; }   // nothing new: no redraw, no flicker
+    data = fresh;
     const sel = document.getElementById("uni");
     sel.innerHTML = data.universes.map(u => `<option value="${u.id}">${u.name}</option>`).join("");
     if (!data.universes.some(u => u.id === uni)) uni = data.universes[0].id;
@@ -198,6 +210,7 @@ function draw(flash) {
         const it = ind.items[k], v = it[key];
         const t = document.createElement("div");
         t.className = "tile";
+        t.dataset.s = it.s;
         t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${mode === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
         const len = it.s.length;
         // font sized to the tile, and never wider than the tile (about 0.66em per capital letter)
@@ -215,12 +228,7 @@ function draw(flash) {
         }
         fresh[it.s] = it.d1;
         if (flash && prev[it.s] != null && it.d1 != null && Math.abs(it.d1 - prev[it.s]) >= 0.05) t.classList.add(it.d1 > prev[it.s] ? "flash-up" : "flash-down");
-        t.onclick = () => {
-          const tip = document.getElementById("tip");
-          tip.innerHTML = `<b>${it.s}</b> $${it.price} &nbsp; ` + PERIODS.map(([k, n]) => `${n} ${fmt(it[k])}`).join(" &middot; ") +
-            `<br><span style="color:${SIGCOL[it.signal]}">${it.signal}</span>`;
-          tip.style.display = "block"; clearTimeout(window._t); window._t = setTimeout(() => tip.style.display = "none", 6000);
-        };
+        t.onclick = () => showTip(it);
         t.onmouseenter = e => showHover(e, it);
         t.onmousemove = e => moveHover(e);
         t.onmouseleave = hideHover;
@@ -229,20 +237,56 @@ function draw(flash) {
     });
   });
   if (flash || !Object.keys(prev).length) prev = fresh;
+  if (hit) { const t = map.querySelector(`[data-s="${hit}"]`); if (t) t.classList.add("hit"); }
 }
 
+let hit = null;
+function showTip(it) {
+  hideHover();
+  loadSpark().then(() => {
+    const tip = document.getElementById("tip");
+    if (tip.dataset.s === it.s && tip.style.display === "block") tip.querySelector(".ch").innerHTML = chart(it.s);
+  });
+  const tip = document.getElementById("tip");
+  tip.dataset.s = it.s;
+  tip.innerHTML = `<span class="x" onclick="document.getElementById('tip').style.display='none'">&times;</span>` +
+    `<div class="t">${it.s} <span style="font-weight:400">$${it.price}</span></div>` + (it.n ? `<div class="n">${it.n}</div>` : "") +
+    `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
+    `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
+    `<div class="ch">${chart(it.s)}</div>` +
+    `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
+  tip.style.display = "block";
+}
+function search(q, go) {
+  q = (q || "").trim().toUpperCase(); hit = null;
+  if (q && data) {
+    const syms = Object.keys(data.symbols);
+    hit = syms.find(s => s === q) || syms.find(s => s.startsWith(q)) ||
+          (q.length > 2 ? syms.find(s => (data.symbols[s].n || "").toUpperCase().includes(q)) : null) || null;
+    if (hit && !data.universes.find(u => u.id === uni).sectors.some(s => s.symbols.includes(hit))) {
+      const u = data.universes.find(u => u.sectors.some(s => s.symbols.includes(hit)));
+      if (u) { uni = u.id; document.getElementById("uni").value = uni; save(); }
+    }
+  }
+  draw(false);
+  if (hit && go) showTip({s: hit, ...data.symbols[hit]});
+}
+document.getElementById("q").addEventListener("input", e => search(e.target.value, false));
+document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") { search(e.target.value, true); e.target.blur(); } });
 let spark = null, sparkTried = false;
 async function loadSpark() {
-  if (sparkTried) return; sparkTried = true;
+  if (sparkTried) return sparkP; sparkTried = true; let done; sparkP = new Promise(r => done = r);
   try { spark = await (await fetch("spark.json?d=" + new Date().toISOString().slice(0, 10))).json(); } catch (e) { spark = null; }
+  done();
 }
+let sparkP = Promise.resolve();
 function chart(sym) {
   const c = spark && spark[sym]; if (!c || c.length < 5) return "";
   const W = 266, H = 64, lo = Math.min(...c), hi = Math.max(...c), r = hi - lo || 1;
   const pts = c.map((v, i) => [(i / (c.length - 1)) * W, H - 3 - ((v - lo) / r) * (H - 8)]);
   const line = pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
   const up = c[c.length - 1] >= c[0], col = up ? "#4ee37b" : "#ff6b6e";
-  return `<svg width="${W}" height="${H + 14}" viewBox="0 0 ${W} ${H + 14}">` +
+  return `<svg width="100%" viewBox="0 0 ${W} ${H + 14}" style="max-width:${W * 1.6}px">` +
     `<polygon points="0,${H} ${line} ${W},${H}" fill="${col}" opacity=".15"/>` +
     `<polyline points="${line}" fill="none" stroke="${col}" stroke-width="1.6"/>` +
     `<circle cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1]}" r="2.6" fill="${col}"/>` +
@@ -270,8 +314,9 @@ function moveHover(e) {
   el.style.left = x + "px"; el.style.top = y + "px";
 }
 function hideHover() { document.getElementById("hover").style.display = "none"; }
-window.addEventListener("resize", () => draw(false));
-load(); setInterval(load, 60000);
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => draw(false), 120); });
+load(); setInterval(() => { if (!document.hidden) load(); }, 60000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 </script>
 </body>
 </html>
