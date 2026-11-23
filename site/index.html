@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Market map</title>
+<style>
+  :root { --bg:#1c1e26; --fg:#fff; --mut:#9aa0ae; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  body { display:flex; flex-direction:column; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  header { padding:8px 10px 6px; display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+  h1 { font-size:16px; margin:0; }
+  .idx { display:flex; gap:10px; font-size:12px; flex-wrap:wrap; }
+  .idx b { font-weight:600; }
+  .up { color:#4ee37b; } .down { color:#ff6b6e; }
+  .tabs { margin-left:auto; display:flex; gap:4px; }
+  .tabs button { background:#2a2d38; color:var(--fg); border:0; border-radius:6px; padding:5px 10px; font-size:12px; }
+  .tabs button.on { background:#4a5170; font-weight:600; }
+  #regime { font-size:12px; padding:0 10px 4px; color:var(--mut); }
+  #map { position:relative; flex:1; min-height:300px; margin:0 4px; }
+  .sec { position:absolute; border:1px solid var(--bg); }
+  .sec > .name { position:absolute; left:3px; top:1px; font-size:10px; color:#c9ccd6; text-transform:uppercase;
+    letter-spacing:.04em; white-space:nowrap; pointer-events:none; z-index:2; text-shadow:0 0 3px #000; }
+  .tile { position:absolute; border:1px solid var(--bg); overflow:hidden; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; line-height:1.15; cursor:pointer;
+    transition:background-color .6s; }
+  .tile .s { font-weight:700; } .tile .c { opacity:.95; } .tile .g { font-weight:700; opacity:.95; }
+  .flash-up { animation:fu 1.4s; } .flash-down { animation:fd 1.4s; }
+  @keyframes fu { 0%,40% { box-shadow: inset 0 0 0 3px #4ee37b; } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+  @keyframes fd { 0%,40% { box-shadow: inset 0 0 0 3px #ff6b6e; } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+  footer { padding:6px 10px 8px; font-size:10.5px; color:var(--mut); }
+  #tip { position:fixed; left:10px; right:10px; bottom:calc(10px + env(safe-area-inset-bottom)); background:#2a2d38;
+    border-radius:10px; padding:10px 12px; font-size:13px; display:none; z-index:10; box-shadow:0 4px 18px #0008; }
+  .legend { display:flex; align-items:center; gap:0; margin-top:4px; }
+  .legend span { padding:2px 7px; font-size:10px; color:#fff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Market map</h1>
+  <div class="idx" id="idx"></div>
+  <div class="tabs" id="tabs">
+    <button data-k="d1" class="on">Today</button><button data-k="d5">5 days</button><button data-k="d20">1 month</button>
+  </div>
+</header>
+<div id="regime"></div>
+<div id="map"></div>
+<footer>
+  <div id="updated"></div>
+  <div class="legend" id="legend"></div>
+  <div>Tile size is dollar volume (IEX feed, so not exact market cap). Signals are one simple set of trend rules, not advice or a forecast. Tap a tile for detail.</div>
+</footer>
+<div id="tip"></div>
+<script src="layout.js"></script>
+<script>
+const SCALE = [[-10,[246,53,56]],[-6.7,[191,64,69]],[-3.3,[139,68,78]],[0,[65,69,84]],[3.3,[53,118,78]],[6.7,[47,158,79]],[10,[48,204,90]]];
+function colour(p) {
+  if (p == null) return "rgb(64,68,84)";
+  p = Math.max(-10, Math.min(10, p));
+  for (let i = 0; i < SCALE.length - 1; i++) {
+    const [a, ca] = SCALE[i], [b, cb] = SCALE[i + 1];
+    if (p >= a && p <= b) { const t = (p - a) / (b - a); return `rgb(${ca.map((v, k) => Math.round(v + (cb[k] - v) * t)).join(",")})`; }
+  }
+  return "rgb(64,68,84)";
+}
+const fmt = p => p == null ? "n/a" : (p > 0 ? "+" : "") + p.toFixed(1) + "%";
+const SIGCOL = {"BUY SETUP":"#ffe66d","SETUP (weak mkt)":"#ffd9a0","HOLD / WATCH":"#e6e8ef","AVOID":"#ffb3b3"};
+let data = null, key = "d1", prev = {};
+
+document.getElementById("legend").innerHTML = [-10,-6.7,-3.3,0,3.3,6.7,10]
+  .map(v => `<span style="background:${colour(v)}">${v ? (v > 0 ? "+" : "") + v : 0}%</span>`).join("");
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
+  key = b.dataset.k; document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b)); draw(false);
+});
+
+async function load() {
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
+    data = await r.json();
+    draw(true);
+  } catch (e) { document.getElementById("updated").textContent = "Could not load data. Retrying."; }
+}
+
+function header() {
+  const idx = data.indices || {};
+  document.getElementById("idx").innerHTML = Object.keys(idx).map(s => {
+    const v = idx[s][key]; return `<span><b>${s}</b> <span class="${v >= 0 ? "up" : "down"}">${fmt(v)}</span></span>`;
+  }).join("");
+  document.getElementById("regime").textContent = "Market: " + (data.regime.why || "unknown");
+  const t = new Date(data.updated);
+  const age = Math.round((Date.now() - t) / 60000);
+  document.getElementById("updated").textContent = "Updated " + t.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"}) +
+    " (" + (age < 1 ? "just now" : age + " min ago") + "). Refreshes every minute; new data lands about every 5 minutes while US markets are open.";
+}
+
+function draw(flash) {
+  if (!data) return;
+  header();
+  const map = document.getElementById("map");
+  const W = map.clientWidth, H = map.clientHeight;
+  map.innerHTML = "";
+  const secs = data.sectors.map(s => ({...s, total: s.items.reduce((a, i) => a + i.size, 0)})).sort((a, b) => b.total - a.total);
+  const sr = squarify(secs.map(s => s.total), 0, 0, W, H);
+  const fresh = {};
+  secs.forEach((sec, si) => {
+    const [sx, sy, sw, sh] = sr[si];
+    const box = document.createElement("div");
+    box.className = "sec";
+    box.style.cssText = `left:${sx}px;top:${sy}px;width:${sw}px;height:${sh}px`;
+    const lab = sw > 70 && sh > 40;
+    if (lab) { const n = document.createElement("div"); n.className = "name"; n.textContent = sec.name; box.appendChild(n); }
+    map.appendChild(box);
+    const top = lab ? 13 : 0;
+    const ir = squarify(sec.items.map(i => i.size), 0, top, sw, Math.max(sh - top, 1));
+    sec.items.forEach((it, k) => {
+      const [x, y, w, h] = ir[k];
+      const v = it[key];
+      const t = document.createElement("div");
+      t.className = "tile";
+      t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${colour(v)}`;
+      const m = Math.min(w, h);
+      if (w > 26 && h > 18) {
+        const fs = Math.max(8, Math.min(26, m / 3.2));
+        let html = `<div class="s" style="font-size:${fs}px">${it.s}</div>`;
+        if (h > 34 && w > 38) html += `<div class="c" style="font-size:${Math.max(8, fs * .62)}px">${fmt(v)}</div>`;
+        if (h > 58 && w > 76) html += `<div class="g" style="font-size:${Math.max(7, fs * .42)}px;color:${SIGCOL[it.signal]}">${it.signal}</div>`;
+        t.innerHTML = html;
+      }
+      fresh[it.s] = v;
+      if (flash && prev[it.s] != null && v != null && Math.abs(v - prev[it.s]) >= 0.05) t.classList.add(v > prev[it.s] ? "flash-up" : "flash-down");
+      t.onclick = () => {
+        const tip = document.getElementById("tip");
+        tip.innerHTML = `<b>${it.s}</b> $${it.price} &nbsp; Today ${fmt(it.d1)} &nbsp; 5d ${fmt(it.d5)} &nbsp; 1m ${fmt(it.d20)}<br>` +
+          `<span style="color:${SIGCOL[it.signal]}">${it.signal}</span>`;
+        tip.style.display = "block"; clearTimeout(window._t); window._t = setTimeout(() => tip.style.display = "none", 5000);
+      };
+      box.appendChild(t);
+    });
+  });
+  if (flash) prev = fresh; else if (!Object.keys(prev).length) prev = fresh;
+}
+window.addEventListener("resize", () => draw(false));
+load(); setInterval(load, 60000);
+</script>
+</body>
+</html>
