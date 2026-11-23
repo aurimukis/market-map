@@ -311,10 +311,12 @@ function search(q, go) {
 }
 document.getElementById("q").addEventListener("input", e => search(e.target.value, false));
 document.getElementById("q").addEventListener("keydown", e => { if (e.key === "Enter") { search(e.target.value, true); e.target.blur(); } });
-let fund = null, fundTried = false;
+let fund = null, fundTried = false, fundFor = "";
 async function loadFund() {
-  if (fundTried) return; fundTried = true;
-  try { fund = await (await fetch("fund.json?d=" + new Date().toISOString().slice(0, 13))).json(); } catch (e) { fund = null; }
+  const u = data ? data.updated : "";
+  if (fundTried && fundFor === u) return;
+  fundTried = true; fundFor = u;
+  try { fund = await (await fetch("fund.json?u=" + encodeURIComponent(u), {cache: "no-store"})).json(); } catch (e) { fund = null; }
 }
 const AXES = ["Value", "Future", "Past", "Health", "Dividend"];
 function radar(sym) {
