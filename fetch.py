@@ -229,7 +229,7 @@ def muka_index(rows_by_sym, cfg, bench=BENCH):
     base = cfg.get("base", 100.0)
     return {
         "name": cfg.get("name", "Muka"), "inception": inc, "method": cfg.get("method", ""),
-        "rules": cfg.get("rules", []), "board": cfg.get("board", []), "bench": cfg.get("bench", []),
+        "rules": cfg.get("rules", []), "foreign": cfg.get("foreign", []), "board": cfg.get("board", []), "bench": cfg.get("bench", []),
         "dates": dates, "level": [round(v, 3) for v in level], "spy": [round(v, 3) for v in spy],
         "pct": round((level[-1] / base - 1) * 100, 2), "spy_pct": round((spy[-1] / base - 1) * 100, 2),
     }

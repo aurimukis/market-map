@@ -196,8 +196,15 @@ async function loadIns() {
 }
 const money = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : "$" + Math.round(v / 1e3) + "k";
 function insLine(sym) {
-  const v = insData && insData[sym]; if (!v) return "";
-  return `<div style="color:#d6d9e2;font-size:12px;margin:4px 0">Insiders, 90 days: ` +
+  const inMuka = data && data.muka && data.universes.some(u => u.id === "muka" && u.sectors.some(s => s.symbols.includes(sym)));
+  const watched = inMuka || (data && data.muka && data.muka.bench.includes(sym));
+  if (!watched) return "";
+  const v = insData && insData[sym];
+  const st = "color:#d6d9e2;font-size:12px;margin:4px 0";
+  if (data.muka.foreign.includes(sym)) return `<div style="${st}">Insiders: none shown. Foreign companies file no insider reports with the SEC.</div>`;
+  if (!insData) return `<div style="${st}">Insiders: loading.</div>`;
+  if (!v) return `<div style="${st}">Insiders, 90 days: no open-market purchases or sales.</div>`;
+  return `<div style="${st}">Insiders, 90 days: ` +
     (v.b ? `<b style="color:#4ee37b">${v.n} bought ${money(v.bv)}</b>${v.top ? " (largest: " + v.top.name + ", " + v.top.pos + ")" : ""}` : "no purchases") +
     (v.sv ? `, sold ${money(v.sv)}` : "") + `</div>`;
 }
@@ -210,7 +217,7 @@ function insPanel(m) {
   el.innerHTML = `<b>Insider buying, last 90 days</b> (officers and directors buying on the open market): ` +
     (rows.length ? "<br>" + rows.slice(0, 10).map(chip).join("") + (rows.length > 10 ? ` +${rows.length - 10} more` : "")
                  : "none found.") +
-    `<br><span style="font-size:10px;color:#6f7586">SEC Form 4 via Yahoo, up to 2 days late. European ADRs file none.</span>`;
+    `<br><span style="font-size:10px;color:#6f7586">SEC Form 4 via Yahoo, up to 2 days late. Foreign companies (the European ADRs, TSM) file none.</span>`;
   el.querySelectorAll(".chip[data-s]").forEach(c => c.onclick = () => { const it = {s: c.dataset.s, ...data.symbols[c.dataset.s]}; showTip(it); });
 }
 
@@ -310,6 +317,7 @@ function draw(flash) {
 let hit = null;
 function showTip(it) {
   hideHover();
+  loadIns().then(() => { const el = document.getElementById("tip").querySelector(".insl"); if (el && document.getElementById("tip").dataset.s === it.s) el.innerHTML = insLine(it.s); });
   loadFund().then(() => { const fu = document.getElementById("tip").querySelector(".fu"); if (fu && document.getElementById("tip").dataset.s === it.s) fu.innerHTML = radar(it.s); });
   loadSpark().then(() => {
     const tip = document.getElementById("tip");
@@ -322,7 +330,7 @@ function showTip(it) {
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
     (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
-    insLine(it.s) +
+    `<div class="insl">${insLine(it.s)}</div>` +
     `<div class="ch">${chart(it.s)}</div><div class="fu">${radar(it.s)}</div>` +
     `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
   tip.style.display = "block";

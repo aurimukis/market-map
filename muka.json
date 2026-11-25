@@ -88,5 +88,18 @@
       "type": "launch",
       "text": "Founding portfolio: 35 holdings across 8 themes, amended before the first trading day to add a Europe theme (ASML moved from AI Compute). Growth engines (AI compute, platforms, power) are balanced by defensives, healthcare, financials, hard assets and European leaders so one bad theme cannot sink the index."
     }
+  ],
+  "foreign": [
+    "ASML",
+    "SAP",
+    "NVO",
+    "AZN",
+    "NVS",
+    "SHEL",
+    "TSM",
+    "SNY",
+    "TTE",
+    "UL",
+    "SPOT"
   ]
 }
