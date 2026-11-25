@@ -83,7 +83,7 @@
 <div class="bar">
   <select id="uni" aria-label="Index"></select>
   <input id="q" type="search" placeholder="Ticker" autocomplete="off" autocapitalize="characters" spellcheck="false">
-  <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button><button data-m="ai">AI</button></div>
+  <div class="seg" id="mode" aria-label="Colour by"><button data-m="perf">Performance</button><button data-m="signal">Signal</button><button data-m="ai">AI</button><button data-m="weight" id="wbtn">Weights</button></div>
   <div class="tabs" id="tabs"></div>
 </div>
 <div id="regime"></div>
@@ -119,19 +119,23 @@ const SIGCOL = {"BUY SETUP":"#ffe66d","SETUP (weak mkt)":"#ffd9a0","HOLD / WATCH
 const PERIODS = [["d1","Today"],["d5","5 days"],["d1m","1 month"],["ytd","YTD"],["y1","1 year"],["y2","2 years"],["y3","3 years"],["y5","5 years"],["max","Max"]];
 let data = null, key = "d1", uni = "sp500", mode = "perf", prev = {};
 try { key = localStorage.getItem("mm_key") || key; uni = localStorage.getItem("mm_uni") || uni; mode = localStorage.getItem("mm_mode") || mode; } catch (e) {}
-if (mode !== "signal" && mode !== "ai") mode = "perf";
+if (mode !== "signal" && mode !== "ai" && mode !== "weight") mode = "perf";
+const effMode = () => mode === "weight" && uni !== "muka" ? "perf" : mode;
 if (!PERIODS.some(p => p[0] === key)) key = "d1";
 const save = () => { try { localStorage.setItem("mm_key", key); localStorage.setItem("mm_uni", uni); localStorage.setItem("mm_mode", mode); } catch (e) {} };
 
 function legend() {
   const el = document.getElementById("legend");
-  el.classList.toggle("wide", mode === "ai");
-  if (mode === "ai") {
+  const em = effMode();
+  el.classList.toggle("wide", em === "ai");
+  if (em === "weight") {
+    el.innerHTML = `<span class="sw" style="background:rgb(120,150,215);color:#0b1b3a">Lighter = smaller share of its group</span><span class="sw" style="background:rgb(30,58,160)">Darker = bigger share</span>`;
+  } else if (em === "ai") {
     const U = data && (data.universes.find(u => u.id === uni) || data.universes[0]);
     const count = [0, 0, 0, 0, 0];
     if (U) U.sectors.forEach(s => s.symbols.forEach(sym => { const a = data.symbols[sym].ai; if (a != null) count[a]++; }));
     el.innerHTML = [4, 3, 2, 1, 0].map(a => `<span class="sw eq" style="background:${AIBG[a]};color:${aiText(a)}">${AINAMES[a]}${U ? " " + count[a] : ""}</span>`).join("");
-  } else if (mode === "signal") {
+  } else if (em === "signal") {
     const U = data && (data.universes.find(u => u.id === uni) || data.universes[0]);
     const count = {};
     if (U) U.sectors.forEach(s => s.symbols.forEach(sym => { const g = data.symbols[sym].signal; count[g] = (count[g] || 0) + 1; }));
@@ -146,7 +150,7 @@ tabs.innerHTML = PERIODS.map(([k, n]) => `<button data-k="${k}">${n}</button>`).
 function marks() {
   tabs.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.k === key));
   document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x.dataset.m === mode));
-  tabs.style.opacity = mode !== "perf" ? ".55" : "1";
+  tabs.style.opacity = effMode() !== "perf" ? ".55" : "1";
   legend();
 }
 document.querySelectorAll("#mode button").forEach(b => b.onclick = () => { mode = b.dataset.m; save(); marks(); draw(false); });
@@ -183,9 +187,17 @@ function mukaPanel(U) {
     <div class="ins" id="ins"></div>
     <details><summary>Board log and rules</summary><ul class="log">
     ${m.board.slice().reverse().map(b => `<li><b>${b.date}</b> ${b.text}</li>`).join("")}
-    </ul><ul class="log">${m.rules.map(r => `<li>${r}</li>`).join("")}<li>Bench: ${m.bench.join(", ")}.</li><li>${m.method} A made-up paper index to watch, not a fund and not advice.</li></ul></details>`;
+    </ul>${weightsBlock(m)}<ul class="log">${m.rules.map(r => `<li>${r}</li>`).join("")}<li>Bench: ${m.bench.join(", ")}.</li><li>${m.method} A made-up paper index to watch, not a fund and not advice.</li></ul></details>`;
   el.style.display = "block";
   loadIns().then(() => insPanel(m));
+}
+
+function weightsBlock(m) {
+  const w = m.weights; if (!w) return "";
+  const rows = Object.entries(w.groups).sort((a, b) => b[1] - a[1]).map(([g, p]) =>
+    `<li><b>${g} ${p}%</b>: ` + Object.entries(w.stocks).filter(([, v]) => v.g === g).sort((a, b) => b[1].p - a[1].p)
+      .map(([s, v]) => `${s} ${v.pg}% (${v.p.toFixed(1)}% of total)`).join(", ") + `</li>`).join("");
+  return `<div style="margin-top:6px"><b style="color:var(--fg)">Target weights</b> from ${w.effective}. ${w.why}</div><ul class="log">${rows}</ul>`;
 }
 
 let insData = null, insFor = "";
@@ -195,6 +207,11 @@ async function loadIns() {
   try { insData = await (await fetch("insiders.json?u=" + encodeURIComponent(u), {cache: "no-store"})).json(); } catch (e) { insData = null; }
 }
 const money = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : "$" + Math.round(v / 1e3) + "k";
+function weightLine(sym) {
+  const w = data && data.muka && data.muka.weights && data.muka.weights.stocks[sym];
+  if (!w) return "";
+  return `<div style="color:#d6d9e2;font-size:12px;margin:4px 0">Target weight: <b>${w.p.toFixed(1)}%</b> of the portfolio (${w.pg}% of ${w.g})</div>`;
+}
 function insLine(sym) {
   const inMuka = data && data.muka && data.universes.some(u => u.id === "muka" && u.sectors.some(s => s.symbols.includes(sym)));
   const watched = inMuka || (data && data.muka && data.muka.bench.includes(sym));
@@ -247,13 +264,19 @@ function draw(flash) {
   const W = map.clientWidth, H = map.clientHeight;
   map.innerHTML = "";
   mukaPanel(U);
-  const sz = it => U.equal ? 1 : (U.sqrt ? Math.sqrt(it.size) : it.size);
+  const MW = U.id === "muka" && data.muka && data.muka.weights;
+  const em = effMode();
+  document.getElementById("wbtn").style.display = U.id === "muka" ? "" : "none";
+  const weightTxt = s => MW && MW.stocks[s] ? MW.stocks[s].pg + "%" : "";
+  const weightBg = s => { const pg = MW && MW.stocks[s] ? MW.stocks[s].pg : 0, t = Math.min(1, Math.max(0, (pg - 10) / 30));
+    return `rgb(${Math.round(120 - 90 * t)},${Math.round(150 - 92 * t)},${Math.round(215 - 55 * t)})`; };
+  const sz = it => MW ? (MW.stocks[it.s] ? MW.stocks[it.s].p : 1) : U.equal ? 1 : (U.sqrt ? Math.sqrt(it.size) : it.size);
   const secs = U.sectors.map(sec => {
     const inds = (sec.industries && sec.industries.length ? sec.industries : [{name: "", symbols: sec.symbols}]).map(ind => {
       const items = ind.symbols.map(s => ({s, ...data.symbols[s]})).sort((a, b) => sz(b) - sz(a));
       return {name: ind.name, items, total: items.reduce((a, i) => a + sz(i), 0)};
     }).sort((a, b) => b.total - a.total);
-    return {name: sec.name, inds, total: inds.reduce((a, i) => a + i.total, 0)};
+    return {name: sec.name, w: sec.w, inds, total: inds.reduce((a, i) => a + i.total, 0)};
   }).sort((a, b) => b.total - a.total);
   const fresh = {};
   squarify(secs.map(s => s.total), 0, 0, W, H).forEach(([sx, sy, sw, sh], si) => {
@@ -262,7 +285,7 @@ function draw(flash) {
     box.className = "sec";
     box.style.cssText = `left:${sx}px;top:${sy}px;width:${sw}px;height:${sh}px`;
     const lab = sw > 80 && sh > 50;
-    if (lab) { const n = document.createElement("div"); n.className = "name"; n.textContent = sec.name; box.appendChild(n); }
+    if (lab) { const n = document.createElement("div"); n.className = "name"; n.textContent = sec.name + (MW && sec.w != null ? " " + sec.w + "%" : ""); box.appendChild(n); }
     map.appendChild(box);
     const top = lab ? 16 : 0;
     squarify(sec.inds.map(i => i.total), 0, top, sw, Math.max(sh - top, 1)).forEach(([ix, iy, iw, ih], ii) => {
@@ -275,7 +298,7 @@ function draw(flash) {
         hh = 12;
         const hd = document.createElement("div");
         hd.className = "hd"; hd.textContent = ind.name;
-        hd.style.background = mode !== "perf" ? "#3a3e50" : colour(norm(avgOf(ind.items)));
+        hd.style.background = effMode() !== "perf" ? "#3a3e50" : colour(norm(avgOf(ind.items)));
         ib.appendChild(hd);
       }
       box.appendChild(ib);
@@ -284,15 +307,15 @@ function draw(flash) {
         const t = document.createElement("div");
         t.className = "tile";
         t.dataset.s = it.s;
-        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${mode === "ai" ? (it.ai == null ? "rgb(64,68,84)" : AIBG[it.ai]) : mode === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
-        if (mode === "ai" && it.ai != null) t.style.color = aiText(it.ai);
+        t.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${em === "weight" ? weightBg(it.s) : em === "ai" ? (it.ai == null ? "rgb(64,68,84)" : AIBG[it.ai]) : em === "signal" ? SIGBG[it.signal] : colour(norm(v))}`;
+        if (em === "ai" && it.ai != null) t.style.color = aiText(it.ai);
         const len = it.s.length;
         // font sized to the tile, and never wider than the tile (about 0.66em per capital letter)
         let fs = Math.min(26, Math.min(w, h) / 3.2, (w - 4) / (0.66 * len));
         if (fs >= 7 && h > 17) {
           let html = `<div class="s" style="font-size:${fs.toFixed(1)}px">${it.s}</div>`;
           const cs = Math.min(fs * .62, (w - 4) / 4.6);
-          if (h > fs * 2.1 + 4 && cs >= 6.5) html += `<div class="c" style="font-size:${cs.toFixed(1)}px">${fmt(v)}</div>`;
+          if (h > fs * 2.1 + 4 && cs >= 6.5) html += `<div class="c" style="font-size:${cs.toFixed(1)}px">${em === "weight" ? weightTxt(it.s) : fmt(v)}</div>`;
           t.innerHTML = html;
         } else {
           // small tile: two initials in a small font that fits, or nothing if even that would be unreadable
@@ -330,7 +353,7 @@ function showTip(it) {
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
     (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
-    `<div class="insl">${insLine(it.s)}</div>` +
+    weightLine(it.s) + `<div class="insl">${insLine(it.s)}</div>` +
     `<div class="ch">${chart(it.s)}</div><div class="fu">${radar(it.s)}</div>` +
     `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
   tip.style.display = "block";

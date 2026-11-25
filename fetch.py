@@ -199,10 +199,31 @@ def muka_symbols(cfg):
     return [s for syms in cfg["themes"].values() for s in syms]
 
 
+def muka_weights(cfg):
+    """{symbol: portfolio %} from group % times stock % of group, or None when the config has no weights."""
+    w = cfg.get("weights")
+    if not w:
+        return None
+    out = {}
+    for theme, stocks in w["stocks"].items():
+        for sym, pct in stocks.items():
+            out[sym] = round(w["groups"][theme] * pct / 100, 4)
+    return out
+
+
 def muka_universe(cfg):
-    sectors = [{"name": t, "symbols": list(s), "industries": [{"name": "", "symbols": list(s)}]}
+    gw = (cfg.get("weights") or {}).get("groups", {})
+    sectors = [{"name": t, "w": gw.get(t), "symbols": list(s), "industries": [{"name": "", "symbols": list(s)}]}
                for t, s in cfg["themes"].items()]
     return {"id": "muka", "name": cfg.get("name", "Muka"), "sqrt": False, "equal": True, "sectors": sectors}
+
+
+def _weights_out(cfg):
+    w, wt = cfg.get("weights"), muka_weights(cfg)
+    if not w:
+        return None
+    stocks = {sym: {"g": theme, "pg": pct, "p": wt[sym]} for theme, st in w["stocks"].items() for sym, pct in st.items()}
+    return {"effective": w["effective"], "why": w.get("why", ""), "groups": w["groups"], "stocks": stocks}
 
 
 def muka_index(rows_by_sym, cfg, bench=BENCH):
@@ -215,14 +236,22 @@ def muka_index(rows_by_sym, cfg, bench=BENCH):
         return None
     syms = set(muka_symbols(cfg)) | set(added)
 
+    wt = muka_weights(cfg)
+    eff = (cfg.get("weights") or {}).get("effective", "9999-12-31")
+    avg_w = sum(wt.values()) / len(wt) if wt else 1.0
+
+    def weight(s, d):
+        return (wt.get(s, avg_w) if wt and d >= eff else 1.0)
+
     def held(s, d):
         return added.get(s, inc) <= d and (s not in removed or removed[s] > d)
 
     level, spy = [cfg.get("base", 100.0)], [cfg.get("base", 100.0)]
     for prev, d in zip(dates, dates[1:]):
-        rets = [closes[s][d] / closes[s][prev] - 1 for s in syms
+        rets = [(weight(s, prev), closes[s][d] / closes[s][prev] - 1) for s in syms
                 if held(s, prev) and s in closes and prev in closes[s] and d in closes[s]]
-        r = sum(rets) / len(rets) if rets else 0.0
+        tw = sum(w for w, _ in rets)
+        r = sum(w * x for w, x in rets) / tw if tw else 0.0
         level.append(level[-1] * (1 + r))
         b = closes[bench]
         spy.append(spy[-1] * b[d] / b[prev])
@@ -230,7 +259,7 @@ def muka_index(rows_by_sym, cfg, bench=BENCH):
     return {
         "name": cfg.get("name", "Muka"), "inception": inc, "method": cfg.get("method", ""),
         "rules": cfg.get("rules", []), "foreign": cfg.get("foreign", []), "board": cfg.get("board", []), "bench": cfg.get("bench", []),
-        "dates": dates, "level": [round(v, 3) for v in level], "spy": [round(v, 3) for v in spy],
+        "weights": _weights_out(cfg), "dates": dates, "level": [round(v, 3) for v in level], "spy": [round(v, 3) for v in spy],
         "pct": round((level[-1] / base - 1) * 100, 2), "spy_pct": round((spy[-1] / base - 1) * 100, 2),
     }
 
@@ -349,7 +378,7 @@ def build(rows_by_sym, anchors_by_sym, universes, names=None):
                     keep = [s for s in ind["symbols"] if s in recs]
                     if keep:
                         inds.append({"name": ind["name"], "symbols": keep})
-                secs.append({"name": sec["name"], "symbols": have, "industries": inds})
+                secs.append({"name": sec["name"], "w": sec.get("w"), "symbols": have, "industries": inds})
         if secs:
             unis.append({"id": u["id"], "name": u["name"], "sqrt": u["sqrt"], "equal": bool(u.get("equal")), "sectors": secs})
     return {

@@ -149,3 +149,20 @@ def test_insider_summary_counts_only_open_market_buys_and_sells():
     cache = {}
     assert I.refresh(["A", "B"], cache, ticker=lambda s: df if s == "A" else (_ for _ in ()).throw(RuntimeError("x")), pause=0) == 1
     assert "A" in cache["_ins"] and "B" not in cache["_ins"]
+
+
+def test_muka_weights_add_up_and_drive_the_index():
+    c = F.load_muka()
+    w = c["weights"]
+    assert sum(w["groups"].values()) == 100 and set(w["groups"]) == set(c["themes"])
+    for theme, st in w["stocks"].items():
+        assert sum(st.values()) == 100 and set(st) == set(c["themes"][theme]), theme
+    assert abs(sum(F.muka_weights(c).values()) - 100) < 0.01
+    # a tiny index: weights apply only from the effective date, equal weight before it
+    cfg = {"inception": "2025-01-02", "base": 100, "themes": {"T": ["A", "B"]}, "added": {}, "removed": {},
+           "weights": {"effective": "2025-01-06", "groups": {"T": 100}, "stocks": {"T": {"A": 75, "B": 25}}}}
+    mk2 = lambda cs: [{"d": d, "c": c_} for d, c_ in zip(["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"], cs)]
+    rows = {"SPY": mk2([100] * 4), "A": mk2([10, 11, 11, 12.1]), "B": mk2([10, 10, 10, 10])}
+    m = F.muka_index(rows, cfg)
+    assert abs(m["level"][1] - 105.0) < 1e-6          # day 1: equal weight, A +10%, B 0
+    assert abs(m["level"][3] - 105.0 * (1 + 0.75 * 0.10)) < 1e-6   # day 3: A +10% at 75% weight
