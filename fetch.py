@@ -17,6 +17,7 @@ from dateutil.relativedelta import relativedelta
 
 import ai as AI
 import fundamentals as FD
+import insiders as INS
 import signals as S
 
 BENCH = "SPY"
@@ -456,6 +457,14 @@ def main():
             json.dump({s: {"d": v["d"], "s": v["s"]} for s, v in cache.items() if s in data["symbols"]}, f, separators=(",", ":"))
         print(f"Fundamentals: {done} fetched this run, {len(cache)} cached.")
         print("Without details:", [s for s in order if s not in cache])
+        if muka:
+            watch = [s for s in dict.fromkeys(muka_symbols(muka) + muka.get("bench", []))]
+            n = INS.refresh(watch, cache)
+            FD.save(cache)
+            ins = {s: v["s"] for s, v in cache.get("_ins", {}).items() if v.get("s") and s in watch}
+            with open("site/insiders.json", "w") as f:
+                json.dump(ins, f, separators=(",", ":"))
+            print(f"Insiders: {n} refreshed, {len(ins)} with activity.")
     except Exception as e:
         print(f"Fundamentals skipped ({e}).")
 

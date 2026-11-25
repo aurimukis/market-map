@@ -129,3 +129,23 @@ def test_fundamentals_scores_and_refresh():
     n = FD.refresh(["A", "B", "C"], cache, ticker=lambda s: strong if s != "B" else {}, pause=0)
     assert n == 2 and set(cache) == {"A", "C"}
     assert FD.refresh(["A", "C"], cache, ticker=lambda s: 1 / 0, pause=0) == 0   # fresh entries are not refetched
+
+
+def test_insider_summary_counts_only_open_market_buys_and_sells():
+    import pandas as pd
+    import insiders as I
+    from datetime import date
+    df = pd.DataFrame([
+        {"Insider": "JANE DOE", "Position": "CEO", "Text": "Purchase at price 10.00 per share.", "Start Date": pd.Timestamp("2026-11-10"), "Value": 200000, "Shares": 20000},
+        {"Insider": "JOHN ROE", "Position": "Director", "Text": "Purchase at price 10.50 per share.", "Start Date": pd.Timestamp("2026-10-20"), "Value": 50000, "Shares": 5000},
+        {"Insider": "JANE DOE", "Position": "CEO", "Text": "Stock Award(Grant) at price 0.", "Start Date": pd.Timestamp("2026-11-01"), "Value": 900000, "Shares": 1},
+        {"Insider": "SAM LEE", "Position": "CFO", "Text": "Sale at price 11.00 per share.", "Start Date": pd.Timestamp("2026-11-05"), "Value": 110000, "Shares": 10000},
+        {"Insider": "OLD BUYER", "Position": "Director", "Text": "Purchase at price 9.", "Start Date": pd.Timestamp("2026-01-05"), "Value": 99999, "Shares": 1},
+    ])
+    s = I.summarise(I.normalise(df), today=date(2026, 11, 25))
+    assert s["b"] == 2 and s["n"] == 2 and s["bv"] == 250000 and s["sv"] == 110000      # grant and old buy ignored
+    assert s["last"] == "2026-11-10" and s["top"]["name"] == "Jane Doe" and s["top"]["pos"] == "CEO"
+    assert I.summarise([], today=date(2026, 11, 25)) == {}
+    cache = {}
+    assert I.refresh(["A", "B"], cache, ticker=lambda s: df if s == "A" else (_ for _ in ()).throw(RuntimeError("x")), pause=0) == 1
+    assert "A" in cache["_ins"] and "B" not in cache["_ins"]

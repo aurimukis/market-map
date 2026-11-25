@@ -8,6 +8,7 @@
     "At most 3 swaps per meeting, and no more than 8 holdings in any one theme.",
     "A holding can be dropped when its trend has failed (below its 50-day and 200-day averages) at two month-end checks in a row, or when its theme story breaks.",
     "A replacement comes from the bench and must be in an uptrend at the meeting. Each swap is written to the log with a reason.",
+    "Recent insider buying (officers and directors buying with their own money) can break a tie between replacement candidates, but is never a reason on its own.",
     "Every change takes effect from the latest US close before the meeting and is never back-dated."
   ],
   "themes": {

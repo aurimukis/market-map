@@ -38,6 +38,9 @@
   #regime { font-size:12px; padding:0 10px 4px; color:var(--mut); }
   #muka { display:none; margin:0 10px 6px; font-size:12px; color:var(--mut); }
   #muka .top { display:flex; flex-wrap:wrap; gap:4px 16px; align-items:center; }
+  #muka .ins { margin-top:5px; line-height:1.9; } #muka .ins b { color:var(--fg); }
+  #muka .chip { display:inline-block; background:#2a2d38; border-radius:5px; padding:1px 7px; margin:0 4px 0 0; color:var(--fg); cursor:pointer; white-space:nowrap; }
+  #muka .chip .v { color:#4ee37b; font-weight:600; } #muka .chip.off { cursor:default; opacity:.8; }
   #muka .big { font-size:20px; font-weight:700; color:var(--fg); }
   #muka summary { cursor:pointer; color:#8ab4ff; margin-top:2px; }
   #muka .log { margin:4px 0 0; padding-left:16px; line-height:1.45; } #muka .log b { color:var(--fg); }
@@ -177,10 +180,38 @@ function mukaPanel(U) {
     <span>vs SPY <b class="${cls(diff)}">${diff > 0 ? "+" : ""}${diff.toFixed(1)} pts</b></span>
     <svg width="120" height="34" aria-label="Index versus SPY"><polyline points="${pts(m.spy)}" fill="none" stroke="#9aa0ae" stroke-width="1.5"/><polyline points="${pts(m.level)}" fill="none" stroke="#4ee37b" stroke-width="1.8"/></svg>
     <span>${dayCount} trading day${dayCount === 1 ? "" : "s"} of history</span></div>
+    <div class="ins" id="ins"></div>
     <details><summary>Board log and rules</summary><ul class="log">
     ${m.board.slice().reverse().map(b => `<li><b>${b.date}</b> ${b.text}</li>`).join("")}
     </ul><ul class="log">${m.rules.map(r => `<li>${r}</li>`).join("")}<li>Bench: ${m.bench.join(", ")}.</li><li>${m.method} A made-up paper index to watch, not a fund and not advice.</li></ul></details>`;
   el.style.display = "block";
+  loadIns().then(() => insPanel(m));
+}
+
+let insData = null, insFor = "";
+async function loadIns() {
+  const u = data ? data.updated : "";
+  if (insFor === u) return; insFor = u;
+  try { insData = await (await fetch("insiders.json?u=" + encodeURIComponent(u), {cache: "no-store"})).json(); } catch (e) { insData = null; }
+}
+const money = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : "$" + Math.round(v / 1e3) + "k";
+function insLine(sym) {
+  const v = insData && insData[sym]; if (!v) return "";
+  return `<div style="color:#d6d9e2;font-size:12px;margin:4px 0">Insiders, 90 days: ` +
+    (v.b ? `<b style="color:#4ee37b">${v.n} bought ${money(v.bv)}</b>${v.top ? " (largest: " + v.top.name + ", " + v.top.pos + ")" : ""}` : "no purchases") +
+    (v.sv ? `, sold ${money(v.sv)}` : "") + `</div>`;
+}
+function insPanel(m) {
+  const el = document.getElementById("ins"); if (!el) return;
+  if (!insData) { el.innerHTML = "Insider buying: not loaded yet."; return; }
+  const hold = new Set(data.universes.find(u => u.id === "muka").sectors.flatMap(s => s.symbols));
+  const rows = Object.entries(insData).filter(([, v]) => v.b > 0).sort((a, b) => b[1].bv - a[1].bv);
+  const chip = ([s, v]) => `<span class="chip${data.symbols[s] ? "" : " off"}" ${data.symbols[s] ? `data-s="${s}"` : ""} title="${v.top ? v.top.name + ", " + v.top.pos : ""}">${s} <span class="v">${money(v.bv)}</span> ${v.n} buyer${v.n === 1 ? "" : "s"}, last ${v.last}${hold.has(s) ? "" : " (bench)"}</span>`;
+  el.innerHTML = `<b>Insider buying, last 90 days</b> (officers and directors buying on the open market): ` +
+    (rows.length ? "<br>" + rows.slice(0, 10).map(chip).join("") + (rows.length > 10 ? ` +${rows.length - 10} more` : "")
+                 : "none found.") +
+    `<br><span style="font-size:10px;color:#6f7586">SEC Form 4 via Yahoo, up to 2 days late. European ADRs file none.</span>`;
+  el.querySelectorAll(".chip[data-s]").forEach(c => c.onclick = () => { const it = {s: c.dataset.s, ...data.symbols[c.dataset.s]}; showTip(it); });
 }
 
 function header() {
@@ -291,6 +322,7 @@ function showTip(it) {
     `<div style="color:${SIGCOL[it.signal]};font-weight:700">${it.signal}</div>` +
     (it.ai != null ? `<div style="color:#8ab4ff">AI exposure: ${AINAMES[it.ai]}</div>` : "") +
     `<div class="row">` + PERIODS.map(([k, n]) => `<span>${n} <b class="${it[k] == null ? "" : it[k] >= 0 ? "up" : "down"}">${fmt(it[k])}</b></span>`).join("") + `</div>` +
+    insLine(it.s) +
     `<div class="ch">${chart(it.s)}</div><div class="fu">${radar(it.s)}</div>` +
     `<a href="https://finance.yahoo.com/quote/${encodeURIComponent(it.s.replace(".", "-"))}" target="_blank" rel="noopener">Open on Yahoo Finance</a>`;
   tip.style.display = "block";
